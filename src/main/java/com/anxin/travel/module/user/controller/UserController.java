@@ -3,7 +3,6 @@ package com.anxin.travel.module.user.controller;
 import com.anxin.travel.common.result.Result;
 import com.anxin.travel.common.util.UserContext;
 import com.anxin.travel.module.user.dto.UserVO;
-import com.anxin.travel.module.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 

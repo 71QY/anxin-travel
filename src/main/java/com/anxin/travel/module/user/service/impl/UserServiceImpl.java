@@ -12,7 +12,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
 
-    private final UserMapper userMapper;   // 添加 final
+    private final UserMapper userMapper;
 
     @Override
     public UserVO getUserInfo(Long userId) {
