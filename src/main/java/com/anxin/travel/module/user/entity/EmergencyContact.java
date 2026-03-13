@@ -5,16 +5,12 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("user")
-public class User {
+@TableName("emergency_contact")
+public class EmergencyContact {
     @TableId(type = IdType.AUTO)
     private Long id;
+    private Long userId;
+    private String name;
     private String phone;
-    private String password;
-    private String nickname;
-    private String avatar;
-    private String emergencyContactName;
-    private String emergencyContactPhone;
     private LocalDateTime createTime;
-    private LocalDateTime updateTime;
 }
