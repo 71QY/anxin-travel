@@ -19,13 +19,32 @@
 
   <properties>
     <java.version>11</java.version>
+    <spring-ai.version>0.7.1</spring-ai.version> <!-- 使用稳定版本 0.8.0 -->
   </properties>
+
+<!--  &lt;!&ndash; 添加 Spring AI 的仓库（因为 spring-ai 不在中央仓库） &ndash;&gt;-->
+<!--  <repositories>-->
+<!--    <repository>-->
+<!--      <id>spring-milestones</id>-->
+<!--      <name>Spring Milestones</name>-->
+<!--      <url>https://repo.spring.io/milestone</url>-->
+<!--      <snapshots>-->
+<!--        <enabled>false</enabled>-->
+<!--      </snapshots>-->
+<!--    </repository>-->
+<!--  </repositories>-->
 
   <dependencies>
     <!-- Spring Web MVC -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+
+    <!-- WebSocket 支持（智能体需要） -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-websocket</artifactId>
     </dependency>
 
     <!-- MyBatis-Plus -->
@@ -69,6 +88,13 @@
       <artifactId>lombok</artifactId>
       <optional>true</optional>
     </dependency>
+
+<!--    &lt;!&ndash; Spring AI 通义千问 Starter（已包含自动配置和核心库） &ndash;&gt;-->
+<!--    <dependency>-->
+<!--      <groupId>org.springframework.ai</groupId>-->
+<!--      <artifactId>spring-ai-openai-spring-boot-starter</artifactId>-->
+<!--      <version>${spring-ai.version}</version>-->
+<!--    </dependency>-->
   </dependencies>
 
   <build>

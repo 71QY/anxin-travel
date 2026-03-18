@@ -5,7 +5,7 @@ spring:
   datasource:
     url: jdbc:mysql://localhost:3306/anxin_travel?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root
-    password: 0705106042   # 你的 MySQL 密码
+    password: 0705106042
     driver-class-name: com.mysql.cj.jdbc.Driver
   redis:
     host: localhost
@@ -14,6 +14,14 @@ spring:
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: GMT+8
+  ai:
+    openai:
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api-key: sk-40f32f4efaa94ab3ba00a9e51abf6f04
+      chat:
+        options:
+          model: qwen-plus
+          temperature: 0.3
 
 mybatis-plus:
   mapper-locations: classpath:mapper/**/*.xml
@@ -24,7 +32,7 @@ mybatis-plus:
 
 anxin:
   jwt:
-    secret: A1b2C3d4E5f6G7h8I9j0K   # 请修改为一个复杂的随机字符串（不要用这个示例）
+    secret: A1b2C3d4E5f6G7h8I9j0K
     expire: 7200000
   amap:
-    web-api-key: a23e77cf678c4f0f39536a22ceb0652   # 你的高德 Web 服务 Key
+    web-api-key: a23e77cf678c4f0f39536a22ceb0652
