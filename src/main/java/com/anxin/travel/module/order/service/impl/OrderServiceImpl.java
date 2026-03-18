@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Random;
 import java.util.stream.Collectors;
 
@@ -30,24 +31,19 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public OrderVO createOrder(Long userId, CreateOrderRequest request) {
         String orderNo = generateOrderNo();
-
-        // 模拟预估价格（20-50元之间）
         BigDecimal estimatePrice = BigDecimal.valueOf(new Random().nextInt(30) + 20);
-
         OrderInfo order = new OrderInfo();
         order.setOrderNo(orderNo);
         order.setUserId(userId);
         order.setDestLat(request.getDestLat());
         order.setDestLng(request.getDestLng());
         order.setDestAddress(request.getDestName());
-        order.setStatus(0); // 待接单
+        order.setStatus(0);
         order.setPlatformUsed("gaode");
         order.setEstimatePrice(estimatePrice);
         order.setCreateTime(LocalDateTime.now());
-
         orderMapper.insert(order);
         log.info("订单创建成功，订单号：{}", orderNo);
-
         OrderVO vo = new OrderVO();
         BeanUtils.copyProperties(order, vo);
         return vo;
@@ -83,13 +79,13 @@ public class OrderServiceImpl implements OrderService {
         if (order.getStatus() != 0) {
             throw new RuntimeException("当前状态不可取消");
         }
-        order.setStatus(4); // 已取消
+        order.setStatus(4);
         orderMapper.updateById(order);
         log.info("订单已取消，订单号：{}", order.getOrderNo());
     }
 
     @Override
-    public Page<OrderVO> listOrders(Long userId, Integer status, int page, int size) {
+    public Page<OrderVO> listOrders(Long userId, Integer status, Integer page, Integer size) {
         Page<OrderInfo> pageParam = new Page<>(page, size);
         LambdaQueryWrapper<OrderInfo> wrapper = new LambdaQueryWrapper<OrderInfo>()
                 .eq(OrderInfo::getUserId, userId)
@@ -98,11 +94,12 @@ public class OrderServiceImpl implements OrderService {
         Page<OrderInfo> orderPage = orderMapper.selectPage(pageParam, wrapper);
 
         Page<OrderVO> voPage = new Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
-        voPage.setRecords(orderPage.getRecords().stream().map(order -> {
+        List<OrderVO> voList = orderPage.getRecords().stream().map(order -> {
             OrderVO vo = new OrderVO();
             BeanUtils.copyProperties(order, vo);
             return vo;
-        }).collect(Collectors.toList()));  // 修改点：toList() -> collect(Collectors.toList())
+        }).collect(Collectors.toList());
+        voPage.setRecords(voList);
         return voPage;
     }
 }

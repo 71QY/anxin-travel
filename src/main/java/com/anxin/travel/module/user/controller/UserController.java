@@ -2,16 +2,21 @@ package com.anxin.travel.module.user.controller;
 
 import com.anxin.travel.common.result.Result;
 import com.anxin.travel.common.util.UserContext;
+import com.anxin.travel.module.user.dto.EmergencyContactRequest;
 import com.anxin.travel.module.user.dto.UserVO;
+import com.anxin.travel.module.user.entity.EmergencyContact;
+import com.anxin.travel.module.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/user")
 @RequiredArgsConstructor
 public class UserController {
 
-    private final UserService userService;   // 添加 final
+    private final UserService userService;
 
     @GetMapping("/profile")
     public Result<UserVO> getProfile() {
@@ -24,5 +29,20 @@ public class UserController {
         Long userId = UserContext.getUserId();
         userService.updateUserInfo(userId, userVO);
         return Result.success();
+    }
+
+    // 新增接口：添加紧急联系人
+    @PostMapping("/emergency")
+    public Result<Void> addEmergencyContact(@RequestBody EmergencyContactRequest request) {
+        Long userId = UserContext.getUserId();
+        userService.addEmergencyContact(userId, request);
+        return Result.success();
+    }
+
+    // 新增接口：获取紧急联系人列表
+    @GetMapping("/emergency")
+    public Result<List<EmergencyContact>> getEmergencyContacts() {
+        Long userId = UserContext.getUserId();
+        return Result.success(userService.getEmergencyContacts(userId));
     }
 }

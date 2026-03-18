@@ -8,5 +8,5 @@ public interface OrderService {
     OrderVO createOrder(Long userId, CreateOrderRequest request);
     OrderVO getOrder(Long orderId);
     void cancelOrder(Long orderId, Long userId);
-    Page<OrderVO> listOrders(Long userId, Integer status, int page, int size);
+    Page<OrderVO> listOrders(Long userId, Integer status, Integer page, Integer size);
 }
