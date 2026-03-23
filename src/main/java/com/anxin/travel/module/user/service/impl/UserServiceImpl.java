@@ -19,7 +19,12 @@ import java.util.List;
 public class UserServiceImpl implements UserService {
 
     private final UserMapper userMapper;
-    private final EmergencyContactMapper emergencyContactMapper;  // 新增注入
+    private final EmergencyContactMapper emergencyContactMapper;
+
+    // 身份证校验（可提取为工具类）
+    private boolean isValidIdCard(String idCard) {
+        return idCard != null && idCard.matches("^[1-9]\\d{5}(18|19|20)?\\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\\d|3[01])\\d{3}(\\d|X|x)$");
+    }
 
     @Override
     public UserVO getUserInfo(Long userId) {
@@ -29,6 +34,7 @@ public class UserServiceImpl implements UserService {
         }
         UserVO vo = new UserVO();
         BeanUtils.copyProperties(user, vo);
+        // 确保 verified 字段被复制（BeanUtils 会自动复制同名字段）
         return vo;
     }
 
@@ -58,5 +64,19 @@ public class UserServiceImpl implements UserService {
         wrapper.eq(EmergencyContact::getUserId, userId)
                 .orderByDesc(EmergencyContact::getCreateTime);
         return emergencyContactMapper.selectList(wrapper);
+    }
+
+    @Override
+    public void realname(Long userId, String realName, String idCard) {
+        // 身份证格式校验
+        if (!isValidIdCard(idCard)) {
+            throw new RuntimeException("身份证格式不正确");
+        }
+        User user = new User();
+        user.setId(userId);
+        user.setRealName(realName);
+        user.setIdCard(idCard);
+        user.setVerified(1);
+        userMapper.updateById(user);
     }
 }

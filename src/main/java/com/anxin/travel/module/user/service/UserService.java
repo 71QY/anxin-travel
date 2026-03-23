@@ -8,7 +8,7 @@ import java.util.List;
 public interface UserService {
     UserVO getUserInfo(Long userId);
     void updateUserInfo(Long userId, UserVO userVO);
-
+    void realname(Long userId, String realName, String idCard);
     // 新增方法
     void addEmergencyContact(Long userId, EmergencyContactRequest request);
     List<EmergencyContact> getEmergencyContacts(Long userId);

@@ -17,4 +17,7 @@ public class User {
     private String emergencyContactPhone;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
+    private String realName;
+    private String idCard;
+    private Integer verified;
 }

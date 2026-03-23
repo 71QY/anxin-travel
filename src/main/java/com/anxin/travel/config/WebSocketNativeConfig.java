@@ -8,8 +8,6 @@ import org.springframework.web.socket.server.standard.ServerEndpointExporter;
 public class WebSocketNativeConfig {
     @Bean
     public ServerEndpointExporter serverEndpointExporter() {
-        System.out.println("====== ServerEndpointExporter 已注册 ======");
         return new ServerEndpointExporter();
     }
 }
-

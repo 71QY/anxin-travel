@@ -3,6 +3,7 @@ package com.anxin.travel.module.user.controller;
 import com.anxin.travel.common.result.Result;
 import com.anxin.travel.common.util.UserContext;
 import com.anxin.travel.module.user.dto.EmergencyContactRequest;
+import com.anxin.travel.module.user.dto.RealnameRequest;
 import com.anxin.travel.module.user.dto.UserVO;
 import com.anxin.travel.module.user.entity.EmergencyContact;
 import com.anxin.travel.module.user.service.UserService;
@@ -31,7 +32,6 @@ public class UserController {
         return Result.success();
     }
 
-    // 新增接口：添加紧急联系人
     @PostMapping("/emergency")
     public Result<Void> addEmergencyContact(@RequestBody EmergencyContactRequest request) {
         Long userId = UserContext.getUserId();
@@ -39,10 +39,16 @@ public class UserController {
         return Result.success();
     }
 
-    // 新增接口：获取紧急联系人列表
     @GetMapping("/emergency")
     public Result<List<EmergencyContact>> getEmergencyContacts() {
         Long userId = UserContext.getUserId();
         return Result.success(userService.getEmergencyContacts(userId));
+    }
+
+    @PostMapping("/realname")
+    public Result<Void> realname(@RequestBody RealnameRequest request) {
+        Long userId = UserContext.getUserId();
+        userService.realname(userId, request.getRealName(), request.getIdCard());
+        return Result.success();
     }
 }

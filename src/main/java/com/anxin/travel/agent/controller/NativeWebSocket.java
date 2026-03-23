@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import javax.websocket.*;
 import javax.websocket.server.ServerEndpoint;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -22,10 +23,36 @@ public class NativeWebSocket {
     private static final Logger log = LoggerFactory.getLogger(NativeWebSocket.class);
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
+    // 存储所有在线会话（WebSocket sessionId -> Session）
     private static final Map<String, Session> sessions = new ConcurrentHashMap<>();
+
+    // 存储 Android 客户端的 sessionId 与 WebSocket sessionId 的映射
+    private static final Map<String, String> clientSessionMap = new ConcurrentHashMap<>();
 
     private JwtUtil jwtUtil;
     private AgentService agentService;
+
+    /**
+     * 静态方法，向指定 Android 客户端发送消息
+     */
+    public static void sendToSession(String clientSessionId, String message) {
+        String wsSessionId = clientSessionMap.get(clientSessionId);
+        if (wsSessionId == null) {
+            log.warn("找不到 WebSocket session, clientSessionId={}", clientSessionId);
+            return;
+        }
+        Session session = sessions.get(wsSessionId);
+        if (session != null && session.isOpen()) {
+            try {
+                session.getBasicRemote().sendText(message);
+                log.info("发送消息到 clientSession {}: {}", clientSessionId, message);
+            } catch (IOException e) {
+                log.error("发送消息失败", e);
+            }
+        } else {
+            log.warn("WebSocket session 不存在或已关闭: {}", wsSessionId);
+        }
+    }
 
     @OnOpen
     public void onOpen(Session session, EndpointConfig config) {
@@ -58,33 +85,32 @@ public class NativeWebSocket {
         log.info("WebSocket 连接打开，sessionId: {}, userId: {}", sessionId, userId);
     }
 
+    /**
+     * 接收文本消息（Android 发送的是文本帧）
+     */
     @OnMessage
     public void onMessage(String message, Session session) {
+        log.info("收到文本消息: {}", message);
+
         Long userId = (Long) session.getUserProperties().get("userId");
-        log.info("收到消息，userId: {}, 消息内容: {}", userId, message);
+
         try {
             JsonNode root = objectMapper.readTree(message);
-            log.info("解析JSON成功，root: {}", root);
+
             String type = root.path("type").asText();
-            if (!"user_message".equals(type)) {
-                log.warn("消息类型错误: {}", type);
-                sendError(session, "消息类型不支持");
-                return;
-            }
-            String sessionId = root.path("sessionId").asText();
+            String clientSessionId = root.path("sessionId").asText();
             String content = root.path("content").asText();
-            log.info("调用AgentService，sessionId: {}, content: {}", sessionId, content);
 
-            String reply = getAgentService().processNativeMessage(sessionId, userId, content);
-            log.info("AgentService返回: {}", reply);
+            // 建立 Android sessionId -> WebSocket sessionId 映射
+            clientSessionMap.put(clientSessionId, session.getId());
 
-            String replyJson = objectMapper.writeValueAsString(Map.of(
-                    "type", "agent_message",
-                    "sessionId", sessionId,
-                    "content", reply
-            ));
-            log.info("发送回复: {}", replyJson);
-            session.getBasicRemote().sendText(replyJson);
+            log.info("调用AgentService，clientSessionId: {}, content: {}", clientSessionId, content);
+
+            if (agentService == null) {
+                agentService = SpringContextUtil.getBean(AgentService.class);
+            }
+
+            agentService.processIntention(clientSessionId, userId, content, type);
 
         } catch (Exception e) {
             log.error("处理消息异常", e);
@@ -96,6 +122,8 @@ public class NativeWebSocket {
     public void onClose(Session session, CloseReason reason) {
         String sessionId = session.getId();
         sessions.remove(sessionId);
+        // 清理映射关系（需要找到对应的 clientSessionId，简单做法是遍历，但此处简化）
+        clientSessionMap.values().remove(sessionId);
         log.info("WebSocket 连接关闭，sessionId: {}, 原因: {}", sessionId, reason.getReasonPhrase());
     }
 
