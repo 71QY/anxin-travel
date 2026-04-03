@@ -16,6 +16,8 @@ public class OrderVO {
     private String destAddress;
     private Integer status;
     private String platformUsed;
+    private String platformOrderId;
     private BigDecimal estimatePrice;
+    private BigDecimal actualPrice;
     private LocalDateTime createTime;
 }

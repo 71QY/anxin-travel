@@ -109,13 +109,16 @@ DROP TABLE IF EXISTS `user`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `user` (
-  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '用户ID',
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '用户 ID',
   `phone` varchar(20) NOT NULL COMMENT '手机号',
   `password` varchar(100) DEFAULT NULL COMMENT '密码',
   `nickname` varchar(50) DEFAULT NULL COMMENT '昵称',
-  `avatar` varchar(255) DEFAULT NULL COMMENT '头像URL',
+  `avatar` varchar(255) DEFAULT NULL COMMENT '头像 URL',
   `emergency_contact_name` varchar(20) DEFAULT NULL COMMENT '紧急联系人姓名',
   `emergency_contact_phone` varchar(20) DEFAULT NULL COMMENT '紧急联系人电话',
+  `real_name` varchar(50) DEFAULT NULL COMMENT '真实姓名',
+  `id_card` varchar(18) DEFAULT NULL COMMENT '身份证号',
+  `verified` tinyint DEFAULT '0' COMMENT '是否实名认证 0 未认证 1 已认证',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),

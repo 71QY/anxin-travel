@@ -12,5 +12,6 @@ public class EmergencyContact {
     private Long userId;
     private String name;
     private String phone;
+    @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 }

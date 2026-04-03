@@ -6,7 +6,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
 public interface OrderService {
     OrderVO createOrder(Long userId, CreateOrderRequest request);
-    OrderVO getOrder(Long orderId);
+    OrderVO getOrder(Long orderId, Long userId);
     void cancelOrder(Long orderId, Long userId);
+    void confirmOrder(Long orderId, Long userId);
     Page<OrderVO> listOrders(Long userId, Integer status, Integer page, Integer size);
 }

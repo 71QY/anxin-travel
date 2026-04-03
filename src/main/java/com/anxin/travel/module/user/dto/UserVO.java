@@ -10,5 +10,7 @@ public class UserVO {
     private String avatar;
     private String emergencyContactName;
     private String emergencyContactPhone;
-    private Integer verified;   // 新增：0-未认证，1-已认证
+    private String realName;
+    private String idCard;
+    private Integer verified;
 }

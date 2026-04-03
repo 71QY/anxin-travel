@@ -40,9 +40,38 @@ public class JwtUtil {
         try {
             Jwts.parser().setSigningKey(secret).parseClaimsJws(token);
             return true;
+        } catch (ExpiredJwtException e) {
+            log.debug("JWT 已过期：{}", e.getMessage());
+            return false;
         } catch (JwtException | IllegalArgumentException e) {
-            log.warn("JWT验证失败：{}", e.getMessage());
+            log.warn("JWT 验证失败：{}", e.getMessage());
             return false;
         }
     }
+
+    public boolean isTokenExpired(String token) {
+        try {
+            Jwts.parser().setSigningKey(secret).parseClaimsJws(token);
+            return false;
+        } catch (ExpiredJwtException e) {
+            return true;
+        } catch (JwtException e) {
+            return false;
+        }
+    }
+
+    public Date getExpirationDate(String token) {
+        try {
+            Claims claims = Jwts.parser()
+                    .setSigningKey(secret)
+                    .parseClaimsJws(token)
+                    .getBody();
+            return claims.getExpiration();
+        } catch (ExpiredJwtException e) {
+            return e.getClaims().getExpiration();
+        } catch (JwtException e) {
+            return null;
+        }
+    }
+
 }

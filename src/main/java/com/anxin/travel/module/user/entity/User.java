@@ -15,7 +15,9 @@ public class User {
     private String avatar;
     private String emergencyContactName;
     private String emergencyContactPhone;
+    @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
+    @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
     private String realName;
     private String idCard;

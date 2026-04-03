@@ -30,23 +30,57 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderVO createOrder(Long userId, CreateOrderRequest request) {
+        // 校验参数
+        if (request.getDestLat() == null || request.getDestLng() == null) {
+            throw new RuntimeException("目的地坐标不能为空");
+        }
+        if (request.getDestName() == null || request.getDestName().trim().isEmpty()) {
+            throw new RuntimeException("目的地名称不能为空");
+        }
+        
         String orderNo = generateOrderNo();
-        BigDecimal estimatePrice = BigDecimal.valueOf(new Random().nextInt(30) + 20);
+        BigDecimal estimatePrice = calculateEstimatePrice(request.getDestLat(), request.getDestLng());
         OrderInfo order = new OrderInfo();
         order.setOrderNo(orderNo);
         order.setUserId(userId);
         order.setDestLat(request.getDestLat());
         order.setDestLng(request.getDestLng());
-        order.setDestAddress(request.getDestName());
+        order.setDestAddress(request.getDestName().trim());
         order.setStatus(0);
         order.setPlatformUsed("gaode");
         order.setEstimatePrice(estimatePrice);
         order.setCreateTime(LocalDateTime.now());
-        orderMapper.insert(order);
-        log.info("订单创建成功，订单号：{}", orderNo);
+        
+        int rows = orderMapper.insert(order);
+        log.info("订单插入数据库，影响行数：{}, 订单号：{}, ID: {}", rows, orderNo, order.getId());
+        
         OrderVO vo = new OrderVO();
         BeanUtils.copyProperties(order, vo);
+        log.info("✅ 订单创建成功：orderNo={}, destAddress={}, lat={}, lng={}", 
+            vo.getOrderNo(), vo.getDestAddress(), vo.getDestLat(), vo.getDestLng());
         return vo;
+    }
+
+    /**
+     * 快速创建订单（简化版，用于 AI 对话中直接下单）
+     */
+    @Transactional
+    public OrderVO quickCreateOrder(Long userId, Double destLat, Double destLng, String destName) {
+        CreateOrderRequest request = new CreateOrderRequest();
+        request.setDestLat(destLat);
+        request.setDestLng(destLng);
+        request.setDestName(destName);
+        return createOrder(userId, request);
+    }
+
+    private BigDecimal calculateEstimatePrice(Double destLat, Double destLng) {
+        double startLat = 30.0;
+        double startLng = 120.0;
+        double distance = Math.sqrt(Math.pow(destLat - startLat, 2) + Math.pow(destLng - startLng, 2)) * 111;
+        double basePrice = 10.0;
+        double pricePerKm = 2.5;
+        double total = basePrice + distance * pricePerKm;
+        return BigDecimal.valueOf(Math.max(total, 15.0));
     }
 
     private String generateOrderNo() {
@@ -56,10 +90,13 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public OrderVO getOrder(Long orderId) {
+    public OrderVO getOrder(Long orderId, Long userId) {
         OrderInfo order = orderMapper.selectById(orderId);
         if (order == null) {
             throw new RuntimeException("订单不存在");
+        }
+        if (!order.getUserId().equals(userId)) {
+            throw new RuntimeException("无权查看他人订单");
         }
         OrderVO vo = new OrderVO();
         BeanUtils.copyProperties(order, vo);
@@ -85,13 +122,35 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    @Transactional
+    public void confirmOrder(Long orderId, Long userId) {
+        OrderInfo order = orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new RuntimeException("订单不存在");
+        }
+        if (!order.getUserId().equals(userId)) {
+            throw new RuntimeException("无权确认他人订单");
+        }
+        if (order.getStatus() != 1) {
+            throw new RuntimeException("订单状态不正确，无法确认");
+        }
+        order.setStatus(3);
+        orderMapper.updateById(order);
+        log.info("订单已确认完成，订单号：{}", order.getOrderNo());
+    }
+
+    @Override
     public Page<OrderVO> listOrders(Long userId, Integer status, Integer page, Integer size) {
+        log.info("查询订单列表，userId: {}, status: {}, page: {}, size: {}", userId, status, page, size);
+        
         Page<OrderInfo> pageParam = new Page<>(page, size);
         LambdaQueryWrapper<OrderInfo> wrapper = new LambdaQueryWrapper<OrderInfo>()
                 .eq(OrderInfo::getUserId, userId)
                 .eq(status != null, OrderInfo::getStatus, status)
                 .orderByDesc(OrderInfo::getCreateTime);
+        
         Page<OrderInfo> orderPage = orderMapper.selectPage(pageParam, wrapper);
+        log.info("数据库查询完成，总记录数：{}, 当前页数据量：{}", orderPage.getTotal(), orderPage.getRecords().size());
 
         Page<OrderVO> voPage = new Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
         List<OrderVO> voList = orderPage.getRecords().stream().map(order -> {
@@ -100,6 +159,8 @@ public class OrderServiceImpl implements OrderService {
             return vo;
         }).collect(Collectors.toList());
         voPage.setRecords(voList);
+        
+        log.info("订单列表转换完成，返回 {} 条记录", voList.size());
         return voPage;
     }
 }
