@@ -40,7 +40,7 @@ public class SearchStrategyEngine {
     }
 
     /**
-     * 多路召回搜索引擎（对标高德地图真实行为）
+     * 多路召回搜索引擎（腾讯地图优先）
      */
     public List<PoiDTO> search(String keyword, double lat, double lng) {
         log.info("🔍 多路召回启动：keyword={}, location=({}, {})", keyword, lat, lng);
@@ -48,108 +48,155 @@ public class SearchStrategyEngine {
         Set<String> uniqueKey = new HashSet<>();
         List<PoiDTO> allResults = new ArrayList<>();
 
-        // ================== 1. 地理编码优先（如果 keyword 像地址） ==================
-        if (isAddressLike(keyword)) {
-            try {
-                log.info("📍 路径 1: 地理编码优先");
-                List<PoiDTO> geocodeResults = amapClient.searchByGeocode(keyword, lat, lng);
-                addUnique(geocodeResults, allResults, uniqueKey);
-                if (!allResults.isEmpty()) {
-                    log.info("✅ 地理编码召回 {} 个结果", allResults.size());
+        // ================== 1. 腾讯地图优先搜索 ==================
+        log.info("🚀 路径 1: 腾讯地图优先搜索（主搜索源）");
+        try {
+            List<PoiDTO> tencentResults = tencentMapClient.searchNearbyPlaces(keyword, lat, lng, 50000);
+            
+            if (tencentResults != null && !tencentResults.isEmpty()) {
+                addUnique(tencentResults, allResults, uniqueKey);
+                log.info("✅ 腾讯地图找到 {} 个结果", tencentResults.size());
+                
+                // 【关键修改】如果腾讯地图找到>=3 个结果，直接返回，不再使用高德
+                if (tencentResults.size() >= 3) {
+                    log.info("✅ 腾讯地图结果充足（{} 个），直接返回，不调用高德 API", tencentResults.size());
+                } else {
+                    log.info("⚠️ 腾讯地图结果较少 ({})，继续高德地图补充", tencentResults.size());
                 }
-            } catch (Exception e) {
-                log.error("❌ 地理编码失败", e);
+            } else {
+                log.warn("⚠️ 腾讯地图无结果，切换到高德地图搜索");
             }
+        } catch (Exception e) {
+            log.error("❌ 腾讯地图搜索失败", e);
+            log.warn("⚠️ 腾讯地图异常，切换到高德地图搜索");
         }
 
-        // ================== 2. 本地城市精确搜索（使用 adcode） ==================
-        String adcode = amapClient.getAdcodeByLocation(lat, lng);
-        if (adcode != null) {
-            try {
-                log.info("🏙️ 路径 2: 本地城市精确搜索（adcode={})", adcode);
-                List<PoiDTO> localResults = amapClient.searchNearbyPlaces(
-                        keyword, lat, lng, 1, 20, true, false, 10000, true, null);
-                addUnique(localResults, allResults, uniqueKey);
-                log.info("✅ 本地搜索召回 {} 个结果，累计 {} 个", 
-                        localResults == null ? 0 : localResults.size(), allResults.size());
-            } catch (Exception e) {
-                log.error("❌ 本地搜索失败", e);
+        // ================== 2. 高德地图多路召回（腾讯地图不足时的补充） ==================
+        // 【关键修改】只有当腾讯地图结果 < 3 个时，才触发高德搜索
+        if (allResults.size() < 3) {
+            log.info("🗺️ 开始高德地图多路召回...");
+            
+            // 2.1 地理编码优先（如果 keyword 像地址）
+            if (isAddressLike(keyword)) {
+                try {
+                    log.info("📍 路径 2.1: 地理编码优先");
+                    List<PoiDTO> geocodeResults = amapClient.searchByGeocode(keyword, lat, lng);
+                    addUnique(geocodeResults, allResults, uniqueKey);
+                    if (!allResults.isEmpty()) {
+                        log.info("✅ 地理编码召回 {} 个结果", allResults.size());
+                    }
+                } catch (Exception e) {
+                    log.error("❌ 地理编码失败", e);
+                }
             }
-        }
-
-        // ================== 3. 扩大半径到 50km ==================
-        if (allResults.size() < 10) {
-            try {
-                log.info("🚀 路径 3: 扩大半径到 50km");
-                List<PoiDTO> radiusResults = amapClient.searchNearbyPlaces(
-                        keyword, lat, lng, 1, 20, true, false, 50000, true, null);
-                addUnique(radiusResults, allResults, uniqueKey);
-                log.info("✅ 扩大半径召回 {} 个结果，累计 {} 个", 
-                        radiusResults == null ? 0 : radiusResults.size(), allResults.size());
-            } catch (Exception e) {
-                log.error("❌ 扩大半径失败", e);
+            
+            // 2.2 本地城市精确搜索
+            String adcode = amapClient.getAdcodeByLocation(lat, lng);
+            if (adcode != null && allResults.size() < 3) {
+                try {
+                    log.info("🏙️ 路径 2.2: 本地城市精确搜索（adcode={})", adcode);
+                    List<PoiDTO> localResults = amapClient.searchNearbyPlaces(
+                            keyword, lat, lng, 1, 20, true, false, 10000, true, null);
+                    addUnique(localResults, allResults, uniqueKey);
+                    log.info("✅ 本地搜索召回 {} 个结果，累计 {} 个", 
+                            localResults == null ? 0 : localResults.size(), allResults.size());
+                } catch (Exception e) {
+                    log.error("❌ 本地搜索失败", e);
+                }
             }
-        }
 
-        // ================== 4. 周边城市搜索 ==================
-        if (allResults.size() < 10 && adcode != null) {
-            try {
-                log.info("🏙️ 路径 4: 周边城市搜索");
-                List<String> nearbyAdcodes = getNearbyAdcodes(adcode);
-                for (String nearbyAdcode : nearbyAdcodes) {
-                    double[] cityCenter = getCityCenter(nearbyAdcode);
-                    if (cityCenter != null) {
-                        List<PoiDTO> nearbyResults = amapClient.searchNearbyPlaces(
-                                keyword, cityCenter[0], cityCenter[1], 1, 20, 
-                                true, false, 50000, true, null);
-                        addUnique(nearbyResults, allResults, uniqueKey);
-                        if (allResults.size() >= 15) break;
+            // 2.3 扩大半径到 50km
+            if (allResults.size() < 3) {
+                try {
+                    log.info("🚀 路径 2.3: 扩大半径到 50km");
+                    List<PoiDTO> radiusResults = amapClient.searchNearbyPlaces(
+                            keyword, lat, lng, 1, 20, true, false, 50000, true, null);
+                    addUnique(radiusResults, allResults, uniqueKey);
+                    log.info("✅ 扩大半径召回 {} 个结果，累计 {} 个", 
+                            radiusResults == null ? 0 : radiusResults.size(), allResults.size());
+                } catch (Exception e) {
+                    log.error("❌ 扩大半径失败", e);
+                }
+            }
+
+            // 2.4 周边城市搜索
+            if (allResults.size() < 3) {
+                String nearbyAdcode = amapClient.getAdcodeByLocation(lat, lng);
+                if (nearbyAdcode != null) {
+                    try {
+                        log.info("🏙️ 路径 2.4: 周边城市搜索");
+                        List<String> nearbyAdcodes = getNearbyAdcodes(nearbyAdcode);
+                        for (String nearbyAdcodeValue : nearbyAdcodes) {
+                            double[] cityCenter = getCityCenter(nearbyAdcodeValue);
+                            if (cityCenter != null) {
+                                List<PoiDTO> nearbyResults = amapClient.searchNearbyPlaces(
+                                        keyword, cityCenter[0], cityCenter[1], 1, 20, 
+                                        true, false, 50000, true, null);
+                                addUnique(nearbyResults, allResults, uniqueKey);
+                                if (allResults.size() >= 15) break;
+                            }
+                        }
+                        log.info("✅ 周边城市召回，累计 {} 个结果", allResults.size());
+                    } catch (Exception e) {
+                        log.error("❌ 周边城市搜索失败", e);
                     }
                 }
-                log.info("✅ 周边城市召回，累计 {} 个结果", allResults.size());
-            } catch (Exception e) {
-                log.error("❌ 周边城市搜索失败", e);
             }
-        }
 
-        // ================== 5. 省级搜索 ==================
-        if (allResults.size() < 10) {
-            try {
-                log.info("🏞️ 路径 5: 省级搜索（fallback）");
-                List<PoiDTO> provinceResults = amapClient.searchNearbyPlaces(
-                        keyword, lat, lng, 1, 20, true, true, 50000, true, null);
-                addUnique(provinceResults, allResults, uniqueKey);
-                log.info("✅ 省级搜索召回 {} 个结果，累计 {} 个", 
-                        provinceResults == null ? 0 : provinceResults.size(), allResults.size());
-            } catch (Exception e) {
-                log.error("❌ 省级搜索失败", e);
+            // 2.5 省级搜索
+            if (allResults.size() < 3) {
+                try {
+                    log.info("🏞️ 路径 2.5: 省级搜索（fallback）");
+                    List<PoiDTO> provinceResults = amapClient.searchNearbyPlaces(
+                            keyword, lat, lng, 1, 20, true, true, 50000, true, null);
+                    addUnique(provinceResults, allResults, uniqueKey);
+                    log.info("✅ 省级搜索召回 {} 个结果，累计 {} 个", 
+                            provinceResults == null ? 0 : provinceResults.size(), allResults.size());
+                } catch (Exception e) {
+                    log.error("❌ 省级搜索失败", e);
+                }
             }
-        }
 
-        // ================== 6. 全国搜索（最终兜底，不过滤名称） ==================
-        if (allResults.size() < 10) {
-            try {
-                log.info("🇨🇳 路径 6: 全国搜索（最终兜底）");
-                List<PoiDTO> nationwideResults = amapClient.searchByKeywordNationwide(keyword, 1, 20);
-                addUnique(nationwideResults, allResults, uniqueKey);
-                log.info("✅ 全国搜索召回 {} 个结果，累计 {} 个", 
-                        nationwideResults == null ? 0 : nationwideResults.size(), allResults.size());
-            } catch (Exception e) {
-                log.error("❌ 全国搜索失败", e);
+            // 2.6 全国搜索（最终兜底）+ 质量门判断
+            if (allResults.size() < 3) {
+                try {
+                    log.info("🇨🇳 路径 2.6: 全国搜索（最终兜底）+");
+                    List<PoiDTO> nationwideResults = amapClient.searchByKeywordNationwide(keyword, 1, 20);
+                    
+                    // 【关键质量门】过滤距离过远的不相关结果（阈值：500km）
+                    if (nationwideResults != null && !nationwideResults.isEmpty()) {
+                        final double MAX_ACCEPTABLE_DISTANCE = 500_000; // 500km
+                        List<PoiDTO> filteredResults = new ArrayList<>();
+                        
+                        for (PoiDTO poi : nationwideResults) {
+                            double distance = calculateDistance(lat, lng, poi.getLat(), poi.getLng());
+                            poi.setDistance(distance);
+                            
+                            // 只保留 500km 内的结果
+                            if (distance <= MAX_ACCEPTABLE_DISTANCE) {
+                                filteredResults.add(poi);
+                                log.info("✅ 全国搜索结果可接受：name={}, distance={:.1f}km", poi.getName(), distance / 1000);
+                            } else {
+                                log.warn("❌ 过滤过远结果：name={}, distance={:.1f}km（>{:.0f}km）", 
+                                    poi.getName(), distance / 1000, MAX_ACCEPTABLE_DISTANCE / 1000);
+                            }
+                        }
+                        
+                        // 应用质量门判断
+                        if (isResultQualityAcceptable(filteredResults, keyword)) {
+                            addUnique(filteredResults, allResults, uniqueKey);
+                            log.info("✅ 全国搜索召回 {} 个有效结果，累计 {} 个", 
+                                    filteredResults.size(), allResults.size());
+                        } else {
+                            log.warn("⚠️ 全国搜索结果质量不达标，已丢弃所有结果");
+                        }
+                    }
+                } catch (Exception e) {
+                    log.error("❌ 全国搜索失败", e);
+                }
             }
-        }
-
-        // ================== 7. 腾讯地图搜索（多源兜底） ==================
-        if (allResults.size() < 10) {
-            try {
-                log.info("🔍 路径 7: 腾讯地图搜索（多源兜底）");
-                List<PoiDTO> tencentResults = tencentMapClient.searchNearbyPlaces(keyword, lat, lng, 50000);
-                addUnique(tencentResults, allResults, uniqueKey);
-                log.info("✅ 腾讯地图召回 {} 个结果，累计 {} 个", 
-                        tencentResults == null ? 0 : tencentResults.size(), allResults.size());
-            } catch (Exception e) {
-                log.error("❌ 腾讯地图搜索失败", e);
-            }
+        } else {
+            log.info("✅ 腾讯地图已找到足够结果，跳过高德地图搜索");
         }
 
         // ================== 统一排序 ==================

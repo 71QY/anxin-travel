@@ -56,8 +56,9 @@ public class OrderServiceImpl implements OrderService {
         
         OrderVO vo = new OrderVO();
         BeanUtils.copyProperties(order, vo);
-        log.info("✅ 订单创建成功：orderNo={}, destAddress={}, lat={}, lng={}", 
-            vo.getOrderNo(), vo.getDestAddress(), vo.getDestLat(), vo.getDestLng());
+        vo.setPoiName(vo.getDestAddress());  // 【关键】前端期望 poiName 字段
+        log.info("✅ 订单创建成功：orderNo={}, poiName={}, destAddress={}, lat={}, lng={}", 
+            vo.getOrderNo(), vo.getPoiName(), vo.getDestAddress(), vo.getDestLat(), vo.getDestLng());
         return vo;
     }
 

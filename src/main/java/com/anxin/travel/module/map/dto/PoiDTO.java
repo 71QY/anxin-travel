@@ -1,5 +1,6 @@
 package com.anxin.travel.module.map.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 /**
@@ -38,6 +39,8 @@ public class PoiDTO {
     
     /**
      * POI 相关性评分（用于排序）
+     * 【关键】确保 JSON 序列化时字段名为 "score"
      */
+    @JsonProperty("score")
     private double score;
 }

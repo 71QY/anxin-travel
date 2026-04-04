@@ -490,18 +490,38 @@ public class AgentService {
         final Double currentLng;
         
         if (lat == null || lng == null) {
-            log.warn("搜索缺少坐标，尝试 IP 定位");
-            double[] ipLocation = getIpLocation();
-            if (ipLocation != null) {
-                currentLat = ipLocation[0];
-                currentLng = ipLocation[1];
-                log.info("IP 定位成功：lat={}, lng={}", currentLat, currentLng);
+            log.warn("⚠️ 搜索缺少坐标，尝试从缓存获取用户位置...");
+            
+            // 1. 先从缓存中获取上次保存的位置
+            double[] cachedLocation = memoryService.getLocation(sessionId);
+            if (cachedLocation != null) {
+                currentLat = cachedLocation[0];
+                currentLng = cachedLocation[1];
+                log.info("✅ 从缓存获取位置：lat={}, lng={}", currentLat, currentLng);
             } else {
-                throw new RuntimeException("无法获取您的位置信息，请在地图上手动选择起点");
+                // 2. 缓存没有，尝试 IP 定位
+                log.warn("⚠️ 缓存无位置，尝试 IP 定位...");
+                double[] ipLocation = getIpLocation();
+                if (ipLocation != null) {
+                    currentLat = ipLocation[0];
+                    currentLng = ipLocation[1];
+                    log.info("✅ IP 定位成功：lat={}, lng={}", currentLat, currentLng);
+                    
+                    // 保存到缓存，下次可以直接使用
+                    memoryService.saveLocation(sessionId, currentLat, currentLng);
+                } else {
+                    log.error("❌ IP 定位失败，无法获取用户位置");
+                    throw new RuntimeException("无法获取您的位置信息，请在地图上手动选择起点，或允许浏览器获取您的定位");
+                }
             }
         } else {
+            // 前端传递了坐标，直接使用并缓存
             currentLat = lat;
             currentLng = lng;
+            log.debug("✅ 使用前端传递的坐标：lat={}, lng={}", currentLat, currentLng);
+            
+            // 缓存位置信息
+            memoryService.saveLocation(sessionId, currentLat, currentLng);
         }
 
         // ========== 第一阶段：关键词清洗 + 纠偏 ==========
@@ -642,118 +662,13 @@ public class AgentService {
     }
 
     /**
-     * 抽取出的独立搜索策略引擎（增强版）
-     * 核心优化：搜索半径逐级扩大 + 搜索质量评估（Quality Gate）
+     * 抽取出的独立搜索策略引擎（增强版）- 腾讯地图优先
      */
     private List<PoiDTO> executeSearchStrategy(String cleanedKeyword, Double lat, Double lng) {
-        List<PoiDTO> poiList = new ArrayList<>();
-        boolean isFamous = FAMOUS_LANDMARKS.contains(cleanedKeyword);
+        log.info("🚀 执行搜索策略（腾讯地图优先）：keyword={}, location=({}, {})", cleanedKeyword, lat, lng);
         
-        // 判断是否为通用类别词
-        boolean isCategory = isCategoryKeyword(cleanedKeyword);
-
-        // 获取高德 POI type 编码
-        String poiType = getAmapType(cleanedKeyword);
-
-        // ========== 场景 B：知名地标或具体地名 -> 直接全国搜索 ==========
-        if (isFamous || !isCategory) {
-            log.info("✅ 检测到知名地标/具体地名：{}，直接使用全国搜索", cleanedKeyword);
-            poiList = amapClient.searchNearbyPlaces(cleanedKeyword, lat, lng, 1, 10, true, true, 50000, true, null);
-            
-            // 关键修复：如果是知名地标且全国搜索无结果，使用备选坐标方案
-            if (poiList == null || poiList.isEmpty()) {
-                if (isFamous) {
-                    double[] coords = FAMOUS_LANDMARK_COORDINATES.get(cleanedKeyword);
-                    if (coords != null) {
-                        log.info("💡 高德全国搜索无结果，使用备选坐标：{} -> ({}, {})", cleanedKeyword, coords[0], coords[1]);
-                        // 使用地标真实坐标创建 POI
-                        PoiDTO landmarkPoi = new PoiDTO();
-                        landmarkPoi.setName(cleanedKeyword);
-                        landmarkPoi.setAddress(cleanedKeyword); // 地址暂时用地标名
-                        landmarkPoi.setLat(coords[0]);
-                        landmarkPoi.setLng(coords[1]);
-                        // 计算距离（从用户位置到地标）
-                        double distance = calculateDistance(lat, lng, coords[0], coords[1]);
-                        landmarkPoi.setDistance(distance);
-                        
-                        poiList = new ArrayList<>();
-                        poiList.add(landmarkPoi);
-                        log.info("✅ 使用备选坐标成功：{} (距离用户{:.2f}公里)", cleanedKeyword, distance / 1000.0);
-                    } else {
-                        log.error("❌ 知名地标 '{}' 全国搜索无结果，且无备选坐标数据", cleanedKeyword);
-                    }
-                }
-            }
-        }
-        
-        // ========== 场景 A：通用类别词 -> 半径逐级扩大策略 + 质量评估 ==========
-        if (poiList == null || poiList.isEmpty()) {
-            if (isFamous) log.warn("⚠️ 全国搜索无结果，降级为普通搜索");
-            
-            if (isCategory) {
-                // Step 1: 先尝试 10 公里周边搜索
-                log.info("🔍 模糊类别搜：{}, POI type={}, 先尝试 10 公里周边搜索", cleanedKeyword, poiType);
-                poiList = amapClient.searchNearbyPlaces(cleanedKeyword, lat, lng, 1, 10, true, false, 10000, true, poiType);
-                
-                // 【关键新增】Step 2: 搜索质量评估（Quality Gate）
-                if (poiList != null && !poiList.isEmpty()) {
-                    // 先评分排序
-                    poiList = sortAndRankPoiListWithLocation(poiList, cleanedKeyword, lat, lng);
-                    
-                    // 计算最佳评分和平均分
-                    double bestScore = computeRelevanceScore(poiList.get(0), cleanedKeyword, lat, lng);
-                    double avgScore = poiList.stream()
-                        .mapToDouble(poi -> computeRelevanceScore(poi, cleanedKeyword, lat, lng))
-                        .average()
-                        .orElse(0.0);
-                    
-                    log.info("📊 搜索质量评估：bestScore={}, avgScore={}, count={}", 
-                            formatScore(bestScore), formatScore(avgScore), poiList.size());
-                    
-                    // 质量判断：如果最佳评分 < 0.5，说明周边结果不相关，切换到真正全国搜索（不带 location）
-                    if (bestScore < 0.5) {
-                        log.info("⚠️ 周边结果质量过低（bestScore={} < 0.5），切换到真正全国搜索（无 location）", formatScore(bestScore));
-                        // 【关键修复】调用真正的全国搜索方法（不带 location 参数）
-                        poiList = amapClient.searchByKeywordNationwide(cleanedKeyword, 1, 20);
-                        
-                        // 全国搜索结果也需要评分排序
-                        if (poiList != null && !poiList.isEmpty()) {
-                            poiList = sortAndRankPoiListWithLocation(poiList, cleanedKeyword, lat, lng);
-                            double nationwideBestScore = computeRelevanceScore(poiList.get(0), cleanedKeyword, lat, lng);
-                            log.info("✅ 全国搜索成功：bestScore={}, count={}", formatScore(nationwideBestScore), poiList.size());
-                        } else {
-                            log.warn("⚠️ 全国搜索无结果，回退到周边搜索");
-                            poiList = amapClient.searchNearbyPlaces(cleanedKeyword, lat, lng, 1, 20, true, false, 50000, true, poiType);
-                        }
-                    } else {
-                        log.info("✅ 周边结果质量良好（bestScore={} >= 0.5），使用周边结果", formatScore(bestScore));
-                    }
-                }
-                
-                // Step 3: 如果 10 公里内结果少于 3 个且未触发质量评估，扩大到 50 公里
-                if (poiList == null || poiList.size() < 3) {
-                    log.info("⚠️ 10 公里内仅找到 {} 个结果，扩大到 50 公里范围", poiList == null ? 0 : poiList.size());
-                    List<PoiDTO> largerRadiusResult = amapClient.searchNearbyPlaces(cleanedKeyword, lat, lng, 1, 20, true, false, 50000, true, poiType);
-                    if (largerRadiusResult != null && !largerRadiusResult.isEmpty()) {
-                        poiList = largerRadiusResult;
-                        log.info("✅ 50 公里范围搜索成功，找到 {} 个结果", poiList.size());
-                    }
-                }
-            }
-            
-            // Step 4: 周边搜索失败，兜底使用全国搜索
-            if (poiList == null || poiList.isEmpty()) {
-                log.info("⚠️ 周边搜索无结果，切换到全国搜索模式");
-                poiList = amapClient.searchNearbyPlaces(cleanedKeyword, lat, lng, 1, 10, true, true, 50000, true, poiType);
-            }
-            
-            // Step 5: 如果全国搜索仍然无结果，尝试不限制 POI type
-            if (poiList == null || poiList.isEmpty() && poiType != null) {
-                log.info("⚠️ 带 type 的全国搜索无结果，尝试不带 type 的全国搜索");
-                poiList = amapClient.searchNearbyPlaces(cleanedKeyword, lat, lng, 1, 10, true, true, 50000, true, null);
-            }
-        }
-        return poiList == null ? new ArrayList<>() : poiList;
+        // 直接调用搜索策略引擎（已经内置腾讯地图优先逻辑）
+        return searchStrategyEngine.search(cleanedKeyword, lat, lng);
     }
     
     /**
@@ -1285,6 +1200,13 @@ public class AgentService {
     }
 
     /**
+     * 供 Controller 调用的 IP 定位方法（公开版本）
+     */
+    public double[] getIpLocationForController() {
+        return getIpLocation();
+    }
+
+    /**
      * 从用户文本中提取目的地
      */
     private String extractDestinationFromUser(String text) {
@@ -1360,54 +1282,148 @@ public class AgentService {
     }
 
     /**
-     * 确认选择（供 WebSocket 调用）
+     * 确认选择（严格按前端文档返回 data 结构）
+     * @param sessionId 会话 ID
+     * @param userId 用户 ID
+     * @param selectedPoiName 选中的 POI 名称
+     * @param lat 纬度（新增参数，用于计算路线）
+     * @param lng 经度（新增参数，用于计算路线）
+     * @return Object 前端期望的 data 结构：{type, message, poi, route}
      */
-    public AgentResponse confirmSelection(String sessionId, Long userId, String selectedPoiName) {
+    public Object confirmSelection(String sessionId, Long userId, String selectedPoiName, Double lat, Double lng) {
         log.info("【状态流转】sessionId={}, state=WAIT_CONFIRM -> ORDER_CREATED (用户确认)", sessionId);
+        
+        // 参数校验
+        if (selectedPoiName == null || selectedPoiName.trim().isEmpty()) {
+            throw new IllegalArgumentException("选择的地点不能为空");
+        }
+        
         try {
             // 1. 从内存中获取候选 POI
             List<PoiDTO> candidates = memoryService.getCandidates(sessionId);
             if (candidates == null || candidates.isEmpty()) {
-                return AgentResponse.error("请先搜索目的地");
+                log.warn("⚠️ 未找到候选 POI，sessionId={}", sessionId);
+                // 返回 Map 格式的错误响应，保持类型一致
+                Map<String, Object> errorData = new HashMap<>();
+                errorData.put("type", "ERROR");
+                errorData.put("message", "请先搜索目的地");
+                return errorData;
             }
             
-            // 2. 查找匹配的 POI（通过 name 匹配）
+            log.info("💡 候选 POI 列表：{}", candidates.stream().map(PoiDTO::getName).toList());
+            
+            // 2. 查找匹配的 POI（优化：支持模糊匹配，去除空格、大小写等差异）
+            final String trimmedSelectedName = selectedPoiName.trim();
             PoiDTO selected = candidates.stream()
-                .filter(poi -> poi.getName().equals(selectedPoiName))
+                .filter(poi -> poi.getName() != null)  // 先过滤 null 值
+                .filter(poi -> {
+                    String candidateName = poi.getName().trim();
+                    // 精确匹配（去除首尾空格后比较）
+                    return candidateName.equals(trimmedSelectedName);
+                })
                 .findFirst()
                 .orElse(null);
                 
             if (selected == null) {
-                return AgentResponse.error("未找到该地点，请重新选择");
+                log.error("❌ 未找到匹配的 POI: selectedPoiName='{}', availableNames={}", 
+                    trimmedSelectedName, candidates.stream().map(p -> "'" + p.getName() + "'").toList());
+                // 返回 Map 格式的错误响应，保持类型一致
+                Map<String, Object> errorData = new HashMap<>();
+                errorData.put("type", "ERROR");
+                errorData.put("message", "未找到该地点，请重新选择");
+                return errorData;
             }
             
             log.info("✅ 用户确认：{} - {}", selected.getName(), selected.getAddress());
             
-            // 3. 获取用户位置（从缓存）
-            double[] userLocation = memoryService.getLocation(sessionId);
-            if (userLocation == null) {
-                return AgentResponse.error("无法获取用户位置，请刷新页面");
+            // 3. 使用传递的位置信息（优先）或从缓存获取
+            double[] userLocation;
+            if (lat != null && lng != null) {
+                userLocation = new double[]{lat, lng};
+                log.info("📍 使用请求传递的位置信息：lat={}, lng={}", lat, lng);
+            } else {
+                // Fallback: 从缓存获取
+                userLocation = memoryService.getLocation(sessionId);
+                if (userLocation == null) {
+                    log.error("❌ 无法获取用户位置，sessionId={}", sessionId);
+                    // 返回 Map 格式的错误响应，保持类型一致
+                    Map<String, Object> errorData = new HashMap<>();
+                    errorData.put("type", "ERROR");
+                    errorData.put("message", "无法获取用户位置，请检查是否传递了 lat 和 lng 参数");
+                    return errorData;
+                }
+                log.info("📍 使用缓存的位置信息：lat={}, lng={}", userLocation[0], userLocation[1]);
             }
             
-            // 4. 计算路线
-            String origin = String.format("%.6f,%.6f", userLocation[0], userLocation[1]);
-            String destination = String.format("%.6f,%.6f", selected.getLat(), selected.getLng());
+            // 4. 计算路线（注意：高德地图要求 lng,lat 格式，即经度在前，纬度在后）
+            String origin = String.format("%.6f,%.6f", userLocation[1], userLocation[0]);  // lng,lat
+            String destination = String.format("%.6f,%.6f", selected.getLng(), selected.getLat());  // lng,lat
+            
+            log.info("🗺️ 开始调用地图 API 计算路线：origin={}, destination={}", origin, destination);
             RouteResult route = amapClient.getRoute(origin, destination, "driving");
+            log.info("✅ 地图 API 返回：route={}", route);
+            
+            if (route == null) {
+                log.error("❌ 路线计算失败：origin={}, destination={}", origin, destination);
+                // 返回 Map 格式的错误响应，保持类型一致
+                Map<String, Object> errorData = new HashMap<>();
+                errorData.put("type", "ERROR");
+                errorData.put("message", "无法计算路线，请检查起点和终点位置是否有效");
+                return errorData;
+            }
             
             log.info("✅ 路线规划成功：距离={}m, 时长={}s, 价格={}元", 
                     route.getDistance(), route.getDuration(), route.getPrice());
             
-            // 5. 构建响应（包含路线信息）
+            // 5. 构建符合前端期望的 data 结构
+            // 前端文档期望的格式：
+            // {
+            //   "type": "ORDER",
+            //   "message": "已确认目的地，正在创建订单",
+            //   "poi": {...},
+            //   "route": {"distance": ..., "duration": ..., "price": ...}
+            // }
             Map<String, Object> data = new HashMap<>();
-            data.put("poi", selected);
-            data.put("route", route);
-            data.put("canOrder", true);
+            data.put("type", "ORDER");
+            data.put("message", "已确认目的地，正在创建订单");  // 修复：与前端文档一致
             
-            return AgentResponse.successRoute(route, "已为你规划路线，全程" + route.getDistance() + "米，约" + route.getDuration() + "秒");
+            // 构建 poi 对象（确保所有字段都不为 null）
+            Map<String, Object> poiData = new HashMap<>();
+            poiData.put("id", selected.getId() != null ? selected.getId() : selected.getName());
+            poiData.put("name", selected.getName() != null ? selected.getName() : "未知地点");
+            poiData.put("address", selected.getAddress() != null ? selected.getAddress() : "未知地址");
+            poiData.put("lat", selected.getLat());
+            poiData.put("lng", selected.getLng());
+            data.put("poi", poiData);
             
+            // 构建 route 对象（route 字段都是基本类型，不会为 null）
+            Map<String, Object> routeData = new HashMap<>();
+            routeData.put("distance", route.getDistance());   // 单位：米
+            routeData.put("duration", route.getDuration());   // 单位：秒
+            routeData.put("price", route.getPrice());         // 单位：元
+            data.put("route", routeData);
+            
+            log.info("✅ 构建响应数据：poi.name={}, route.distance={}", 
+                    poiData.get("name"), routeData.get("distance"));
+            
+            return data;
+            
+        } catch (IllegalArgumentException e) {
+            log.error("❌ 参数校验失败", e);
+            // 返回错误信息的 Map，保持类型一致（符合前端文档格式）
+            Map<String, Object> errorData = new HashMap<>();
+            errorData.put("type", "ERROR");
+            errorData.put("message", e.getMessage());
+            return errorData;
         } catch (Exception e) {
-            log.error("确认选择失败", e);
-            return AgentResponse.error("确认失败：" + e.getMessage());
+            log.error("❌ 确认失败", e);
+            // 返回具体错误信息，便于调试（符合前端文档格式）
+            Map<String, Object> errorData = new HashMap<>();
+            errorData.put("type", "ERROR");
+            errorData.put("message", e.getMessage() != null ? e.getMessage() : "确认选择失败");
+            // 打印详细堆栈，便于定位问题
+            log.error("详细错误：{}", e.getClass().getName() + " - " + e.getMessage());
+            return errorData;
         }
     }
 

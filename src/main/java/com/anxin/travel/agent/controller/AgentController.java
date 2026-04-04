@@ -54,37 +54,105 @@ public class AgentController {
     }
 
     /**
-     * 确认选择接口（返回 Result<AgentResponse> 格式）
+     * 确认选择接口（严格按前端文档返回）
      * 前端调用示例：
      * POST /api/agent/confirm
      * Body: {
      *   "sessionId": "xxx",
-     *   "selectedPoiName": "韩山师范学院"
+     *   "selectedPoiName": "韩山师范学院",
+     *   "lat": 23.653927,
+     *   "lng": 116.677026
+     * }
+     * 
+     * 响应格式（成功）：
+     * {
+     *   "code": 200,
+     *   "data": {
+     *     "type": "ORDER",
+     *     "message": "已确认目的地，正在创建订单",
+     *     "poi": {...},
+     *     "route": {...}
+     *   }
+     * }
+     * 
+     * 响应格式（失败）：
+     * {
+     *   "code": 500,
+     *   "data": {
+     *     "type": "ERROR",
+     *     "message": "具体错误信息"
+     *   }
      * }
      */
     @PostMapping("/confirm")
-    public Result<AgentResponse> confirmSelection(
+    public Result<Object> confirmSelection(
             @RequestBody Map<String, Object> request,
-            @RequestHeader("X-User-Id") Long userId) {
+            @RequestHeader(value = "X-User-Id", required = false) Long userIdFromHeader) {
 
         String sessionId = (String) request.get("sessionId");
         String selectedPoiName = (String) request.get("selectedPoiName");
+        Double lat = (Double) request.get("lat");
+        Double lng = (Double) request.get("lng");
+        
+        // 优先从请求头获取 userId，如果没有则从 UserContext 获取（兼容两种模式）
+        Long userId = userIdFromHeader;
+        if (userId == null) {
+            try {
+                userId = com.anxin.travel.common.util.UserContext.getUserId();
+                log.debug("从 UserContext 获取 userId: {}", userId);
+            } catch (Exception e) {
+                log.warn("无法从 UserContext 获取 userId，使用默认值");
+                userId = 1L; // 默认用户 ID（测试用）
+            }
+        }
 
         log.info("============ 确认选择请求 ============");
-        log.info("sessionId={}, userId={}, selectedPoiName={}",
-                sessionId, userId, selectedPoiName);
+        log.info("sessionId={}, userId={}, selectedPoiName={}, lat={}, lng={}",
+                sessionId, userId, selectedPoiName, lat, lng);
+
+        // 参数校验（按前端文档要求的顺序）
+        if (sessionId == null || sessionId.trim().isEmpty()) {
+            log.warn("❌ sessionId 缺失");
+            return Result.error(400, "会话已过期");
+        }
+        
+        if (selectedPoiName == null || selectedPoiName.trim().isEmpty()) {
+            log.warn("❌ selectedPoiName 缺失");
+            return Result.error(400, "POI 名称不能为空");
+        }
+        
+        if (lat == null || lng == null) {
+            log.warn("❌ 位置信息缺失：lat={}, lng={}", lat, lng);
+            return Result.error(400, "位置信息缺失");
+        }
+        
+        // 验证坐标范围
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+            log.warn("❌ 坐标超出范围：lat={}, lng={}", lat, lng);
+            return Result.error(400, "经纬度坐标超出有效范围");
+        }
 
         try {
-            AgentResponse response = agentService.confirmSelection(sessionId, userId, selectedPoiName);
+            // 调用服务层，返回符合前端期望的 data 结构
+            Object responseData = agentService.confirmSelection(sessionId, userId, selectedPoiName, lat, lng);
 
             log.info("✅ 确认成功");
             log.info("======================================");
-            return Result.success(response);
+            
+            // 按照前端文档返回完整结构
+            // 注意：Result.success() 会自动将对象包装在 data 字段中
+            return Result.success(responseData);
 
+        } catch (IllegalArgumentException e) {
+            // 参数校验失败，返回 400
+            log.error("❌ 参数校验失败", e);
+            log.info("======================================");
+            return Result.error(400, e.getMessage());
         } catch (Exception e) {
             log.error("❌ 确认失败", e);
             log.info("======================================");
-            return Result.error("确认失败：" + e.getMessage());
+            // 直接返回错误，让前端显示具体错误信息
+            return Result.error(500, "处理失败：" + e.getMessage());
         }
     }
 

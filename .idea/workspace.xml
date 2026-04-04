@@ -5,61 +5,16 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="7c5536af-c7f0-44f5-ac4b-bb8c2fe2da43" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/TLSSocketFactory.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/ai/TongyiQianwenClient.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/config/TLSSocketFactory.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/AgentController.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/dto/ImageRecognitionRequest.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/model/AgentIntent.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/ImageRecognitionService.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/tool/RouteTool.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/common/result/PageResult.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/auth/dto/RegisterRequest.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/auth/service/SmsService.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/auth/service/impl/MockSmsServiceImpl.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/controller/MapController.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/dto/PoiDTO.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/dto/PoiResult.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/dto/ReverseGeocodeResponse.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/dto/ChangePasswordRequest.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/uiDesigner.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/database/anxin_travel.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/anxin_travel.sql" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/pom.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/TravelApplication.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/TravelApplication.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/config/AuthHandshakeInterceptor.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/config/AuthHandshakeInterceptor.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/config/WebSocketConfig.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/config/WebSocketConfig.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/AgentWebSocketController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/AgentWebSocketController.java" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/agent_confirm_api_notes.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/AgentController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/AgentController.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/NativeWebSocket.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/NativeWebSocket.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/model/AgentState.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/model/AgentState.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/model/CandidateDestination.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/model/CandidateDestination.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/AgentService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/AgentService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/MemoryService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/MemoryService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/tool/MapTool.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/tool/MapTool.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/common/result/Result.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/common/result/Result.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/common/util/JwtUtil.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/common/util/JwtUtil.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/common/util/RedisUtil.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/common/util/RedisUtil.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/config/AuthInterceptor.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/config/AuthInterceptor.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/config/MybatisPlusConfig.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/config/MybatisPlusConfig.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/config/WebConfig.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/config/WebConfig.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/config/WebSocketNativeConfig.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/config/WebSocketNativeConfig.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/auth/controller/AuthController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/auth/controller/AuthController.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/auth/dto/LoginRequest.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/auth/dto/LoginRequest.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/auth/service/AuthService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/auth/service/AuthService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/auth/service/impl/AuthServiceImpl.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/auth/service/impl/AuthServiceImpl.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/client/AmapClient.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/client/AmapClient.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/controller/OrderController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/controller/OrderController.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/SearchStrategyEngine.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/SearchStrategyEngine.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/controller/MapController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/controller/MapController.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/dto/PoiDTO.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/dto/PoiDTO.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/dto/OrderVO.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/dto/OrderVO.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/OrderService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/OrderService.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/impl/OrderServiceImpl.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/impl/OrderServiceImpl.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/controller/UserController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/controller/UserController.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/dto/UserVO.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/dto/UserVO.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/entity/EmergencyContact.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/entity/EmergencyContact.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/entity/User.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/entity/User.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/service/UserService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/service/UserService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/service/impl/UserServiceImpl.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/service/impl/UserServiceImpl.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/resources/application.yml" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/resources/application.yml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -101,6 +56,11 @@
     &quot;settings.editor.selected.configurable&quot;: &quot;reference.settings.project.maven.runner&quot;
   }
 }</component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="D:\callcar_text\idea-project\travel" />
+    </key>
+  </component>
   <component name="RunManager">
     <configuration name="Travel Application" type="MavenRunConfiguration" factoryName="Maven">
       <MavenSettings>

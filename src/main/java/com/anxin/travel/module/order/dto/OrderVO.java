@@ -13,7 +13,8 @@ public class OrderVO {
     private Long driverId;
     private Double destLat;
     private Double destLng;
-    private String destAddress;
+    private String destAddress;  // 后端标准字段
+    private String poiName;      // 【新增】前端期望字段，与 destAddress 相同
     private Integer status;
     private String platformUsed;
     private String platformOrderId;

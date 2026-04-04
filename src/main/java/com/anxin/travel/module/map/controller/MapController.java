@@ -1,15 +1,19 @@
 package com.anxin.travel.module.map.controller;
 
+import com.alibaba.fastjson.JSON;
 import com.anxin.travel.agent.model.CandidateDestination;
 import com.anxin.travel.agent.service.AgentService;
 import com.anxin.travel.common.result.Result;
+import com.anxin.travel.common.util.RedisUtil;
 import com.anxin.travel.module.map.client.AmapClient;
+import com.anxin.travel.module.map.client.TencentMapClient;
 import com.anxin.travel.module.map.dto.PoiDTO;
 import com.anxin.travel.module.map.dto.ReverseGeocodeResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,42 +25,80 @@ import java.util.Map;
 public class MapController {
 
     private final AmapClient amapClient;
-    private final AgentService agentService;  // 新增：注入 AgentService
+    private final AgentService agentService;
+    private final TencentMapClient tencentMapClient;
+    private final RedisUtil redisUtil;
 
     @GetMapping("/search-destination")
     public Result<List<PoiDTO>> searchDestination(
             @RequestParam String keyword,
-            @RequestParam Double lat,
-            @RequestParam Double lng) {
+            @RequestParam(required = false) Double lat,
+            @RequestParam(required = false) Double lng) {
         log.info("============ 主页搜索框请求 ============");
         log.info("搜索目的地：keyword={}, lat={}, lng={}", keyword, lat, lng);
         
+        // 【自动定位】如果前端没有传递坐标，尝试 IP 定位
+        if (lat == null || lng == null) {
+            log.warn("⚠️ 前端未传递坐标，尝试 IP 定位...");
+            try {
+                double[] ipLocation = agentService.getIpLocationForController();
+                if (ipLocation != null) {
+                    lat = ipLocation[0];
+                    lng = ipLocation[1];
+                    log.info("✅ IP 定位成功：lat={}, lng={}", lat, lng);
+                } else {
+                    return Result.error("无法获取您的位置信息，请在地图上手动选择起点");
+                }
+            } catch (Exception e) {
+                log.error("IP 定位失败", e);
+                return Result.error("定位失败：" + e.getMessage());
+            }
+        }
+        
+        log.info("使用坐标：lat={}, lng={}", lat, lng);
+        
         try {
-            // 修复：使用 AgentService 进行智能搜索（支持知名地标识别）
+            // 【关键修复】优先使用腾讯地图搜索（通过 AmapClient 的 searchNearbyPlaces 内部会判断）
             // 注意：这里需要模拟 sessionId 和 userId，实际应该从前端传递
             String sessionId = "map_search_" + System.currentTimeMillis();
             Long userId = 0L;  // 临时用户 ID
             
+            // 调用智能体服务，返回 AgentResponse 对象
             Object result = agentService.processIntention(sessionId, userId, keyword, lat, lng);
             
-            if (result instanceof List) {
+            List<PoiDTO> poiList;
+            if (result instanceof com.anxin.travel.agent.dto.AgentResponse) {
+                // 从 AgentResponse 中提取 places 字段
+                com.anxin.travel.agent.dto.AgentResponse response = 
+                    (com.anxin.travel.agent.dto.AgentResponse) result;
+                poiList = response.getPlaces();
+                log.info("✅ 智能搜索成功：找到 {} 个地点（已按评分降序排列）", poiList != null ? poiList.size() : 0);
+                
+                // 【关键】确保返回给前端的列表已经按评分排序
+                if (poiList != null && !poiList.isEmpty()) {
+                    log.info("📊 返回给前端的 POI 列表（按评分从高到低）:");
+                    for (int i = 0; i < Math.min(5, poiList.size()); i++) {
+                        PoiDTO poi = poiList.get(i);
+                        log.info("  #{}: {} - 评分：{:.4f}", i + 1, poi.getName(), poi.getScore());
+                    }
+                }
+            } else if (result instanceof List) {
                 @SuppressWarnings("unchecked")
-                List<PoiDTO> poiList = (List<PoiDTO>) result;
+                List<PoiDTO> searchResult = (List<PoiDTO>) result;
+                poiList = searchResult;
                 log.info("✅ 智能搜索成功：找到 {} 个地点", poiList.size());
-                log.info("======================================");
-                return Result.success(poiList);
             } else {
-                log.warn("⚠️ 智能搜索返回非列表类型：{}", result.getClass().getName());
-                // 降级处理：使用原来的直接搜索方式
-                log.info("降级使用直接搜索...");
-                List<PoiDTO> poiResults = amapClient.searchNearbyPlaces(keyword, lat, lng, 1, 20, true, false, 5000, true);
-                return Result.success(poiResults);
+                log.warn("⚠️ 智能搜索返回未知类型：{}", result.getClass().getName());
+                poiList = new ArrayList<>();
             }
+            
+            log.info("======================================");
+            return Result.success(poiList != null ? poiList : new ArrayList<>());
             
         } catch (Exception e) {
             log.error("❌ 智能搜索失败，降级处理", e);
-            // 异常降级处理
-            List<PoiDTO> poiResults = amapClient.searchNearbyPlaces(keyword, lat, lng, 1, 20, true, false, 5000, true);
+            // 异常降级处理：使用腾讯地图
+            List<PoiDTO> poiResults = tencentMapClient.searchNearbyPlaces(keyword, lat, lng, 5000);
             return Result.success(poiResults);
         }
     }
@@ -83,8 +125,8 @@ public class MapController {
     @GetMapping("/poi/nearby")
     public Result<List<PoiDTO>> searchNearbyPoi(
             @RequestParam String keyword,
-            @RequestParam Double lat,
-            @RequestParam Double lng,
+            @RequestParam(required = false) Double lat,
+            @RequestParam(required = false) Double lng,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(defaultValue = "5000") int radius,
@@ -96,19 +138,66 @@ public class MapController {
             return Result.error("关键词不能为空");
         }
         
+        // 【自动定位】如果前端没有传递坐标，尝试 IP 定位
         if (lat == null || lng == null) {
-            return Result.error("经纬度不能为空");
+            log.warn("⚠️ 前端未传递坐标，尝试 IP 定位...");
+            try {
+                double[] ipLocation = agentService.getIpLocationForController();
+                if (ipLocation != null) {
+                    lat = ipLocation[0];
+                    lng = ipLocation[1];
+                    log.info("✅ IP 定位成功：lat={}, lng={}", lat, lng);
+                } else {
+                    return Result.error("无法获取您的位置信息，请在地图上手动选择起点");
+                }
+            } catch (Exception e) {
+                log.error("IP 定位失败", e);
+                return Result.error("定位失败：" + e.getMessage());
+            }
         }
         
-        int validPage = Math.max(1, page);
-        int validPageSize = Math.min(Math.max(1, pageSize), 25);
-        int validRadius = nationwide ? 50000 : Math.min(Math.max(100, radius), 10000);
-        
-        // 修改：直接搜索，移除所有过滤
-        List<PoiDTO> poiList = amapClient.searchNearbyPlaces(keyword, lat, lng, validPage, validPageSize, true, nationwide, validRadius, true);
-        
-        log.info("POI 搜索成功：找到 {} 个地点", poiList.size());
-        return Result.success(poiList);
+        // 【关键修复】统一使用智能体搜索策略（腾讯地图优先）
+        try {
+            String sessionId = "map_poi_" + System.currentTimeMillis();
+            Long userId = 0L;  // 临时用户 ID
+            
+            // 调用智能体服务，使用腾讯地图优先的搜索策略
+            Object result = agentService.processIntention(sessionId, userId, keyword, lat, lng);
+            
+            List<PoiDTO> poiList;
+            if (result instanceof com.anxin.travel.agent.dto.AgentResponse) {
+                // 从 AgentResponse 中提取 places 字段
+                com.anxin.travel.agent.dto.AgentResponse response = 
+                    (com.anxin.travel.agent.dto.AgentResponse) result;
+                poiList = response.getPlaces();
+                log.info("✅ 智能搜索成功：找到 {} 个地点（已按评分降序排列）", poiList != null ? poiList.size() : 0);
+                
+                // 【关键】确保返回给前端的列表已经按评分排序
+                if (poiList != null && !poiList.isEmpty()) {
+                    log.info("📊 返回给前端的 POI 列表（按评分从高到低）:");
+                    for (int i = 0; i < Math.min(5, poiList.size()); i++) {
+                        PoiDTO poi = poiList.get(i);
+                        log.info("  #{}: {} - 评分：{:.4f}", i + 1, poi.getName(), poi.getScore());
+                    }
+                }
+            } else if (result instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<PoiDTO> searchResult = (List<PoiDTO>) result;
+                poiList = searchResult;
+                log.info("✅ 智能搜索成功：找到 {} 个地点", poiList.size());
+            } else {
+                log.warn("⚠️ 智能搜索返回非列表类型：{}", result.getClass().getName());
+                poiList = new ArrayList<>();
+            }
+            
+            // 【注意】不再进行二次过滤，因为智能体服务内部已经完成过滤
+            log.info("POI 搜索成功：找到 {} 个地点", poiList.size());
+            return Result.success(poiList);
+            
+        } catch (Exception e) {
+            log.error("❌ 智能搜索失败", e);
+            return Result.error("搜索失败：" + e.getMessage());
+        }
     }
 
     @GetMapping("/poi/detail")
@@ -141,6 +230,7 @@ public class MapController {
             targetPoi.setLng(lng);
             targetPoi.setAddress(poiName); // 地址暂时用名称填充
             targetPoi.setDistance(0.0);
+            targetPoi.setScore(5.0); // 【关键】设置默认满分评分（因为用户手动选择的地点）
             
             log.info("✅ 使用前端传入的坐标：name={}, lat={}, lng={}", targetPoi.getName(), lat, lng);
             log.info("⚠️ 注意：此方法不会触发新的搜索，直接使用传入坐标");
