@@ -5,16 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="7c5536af-c7f0-44f5-ac4b-bb8c2fe2da43" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/agent_confirm_api_notes.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/AgentController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/AgentController.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/NativeWebSocket.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/NativeWebSocket.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/AgentService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/AgentService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/SearchStrategyEngine.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/SearchStrategyEngine.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/controller/MapController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/controller/MapController.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/dto/PoiDTO.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/dto/PoiDTO.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/dto/OrderVO.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/dto/OrderVO.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/impl/OrderServiceImpl.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/impl/OrderServiceImpl.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
