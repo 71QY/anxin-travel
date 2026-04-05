@@ -36,11 +36,14 @@ public class MemoryService {
         List<ChatMessage> messages = sessionMessages
                 .computeIfAbsent(sessionId, k -> new CopyOnWriteArrayList<>());
         
-        // 新增：限制每个会话最多保存 20 条消息，防止内存泄漏
-        if (messages.size() >= 20) {
+        // 【优化】限制每个会话最多保存 30 条消息（15轮对话），防止内存泄漏
+        // 保留足够的上下文用于多轮对话理解
+        if (messages.size() >= 30) {
             messages.remove(0); // 移除最早的消息
+            log.debug("会话消息超过 30 条，移除最早的一条以保持上下文窗口");
         }
         messages.add(message);
+        log.debug("💾 保存消息到记忆：sessionId={}, role={}, content={}", sessionId, role, content.length() > 50 ? content.substring(0, 50) + "..." : content);
     }
 
     public List<ChatMessage> getHistory(String sessionId) {

@@ -280,7 +280,7 @@ public class AuthServiceImpl implements AuthService {
     }
     
     private boolean isValidPassword(String password) {
-        if (password == null || password.length() != 8) {
+        if (password == null || password.length() != 10) {
             return false;
         }
         boolean hasLetter = false;

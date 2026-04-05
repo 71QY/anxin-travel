@@ -3,6 +3,7 @@ package com.anxin.travel.agent.controller;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.anxin.travel.agent.service.AgentService;
+import com.anxin.travel.agent.service.DialectTranslationService;
 import com.anxin.travel.agent.service.MemoryService;
 import com.anxin.travel.common.util.JwtUtil;
 import com.anxin.travel.common.util.SpringContextUtil;
@@ -95,6 +96,12 @@ public class NativeWebSocket {
             Double lng = json.getDouble("lng");
             String type = json.getString("type");
             String imageBase64 = json.getString("imageBase64");
+            
+            // 【新增】获取方言类型（由前端传递）
+            String dialectType = json.getString("dialectType");
+            if (dialectType == null || dialectType.isEmpty()) {
+                dialectType = "mandarin";  // 默认为普通话
+            }
 
             if (clientSessionId == null) {
                 sendError(session, "消息格式错误");
@@ -132,11 +139,24 @@ public class NativeWebSocket {
                 }
             }
 
-            log.info("收到消息：sessionId={}, userId={}, type={}, hasImage={}, lat={}, lng={}", 
-                    clientSessionId, userId, type, imageBase64 != null, lat, lng);
+            log.info("收到消息：sessionId={}, userId={}, type={}, hasImage={}, dialect={}, lat={}, lng={}", 
+                    clientSessionId, userId, type, imageBase64 != null, dialectType, lat, lng);
             
             AgentService agentService = SpringContextUtil.getBean(AgentService.class);
             Object result;
+            
+            // 【新增】方言翻译处理
+            String processedContent = content;
+            if (content != null && !content.trim().isEmpty() && !"mandarin".equalsIgnoreCase(dialectType)) {
+                try {
+                    DialectTranslationService dialectService = SpringContextUtil.getBean(DialectTranslationService.class);
+                    processedContent = dialectService.translateToMandarin(content, dialectType);
+                    log.info("✅ 方言翻译完成：原文=[{}] -> 译文=[{}]", content, processedContent);
+                } catch (Exception e) {
+                    log.error("❌ 方言翻译失败，使用原文：{}", e.getMessage());
+                    processedContent = content;  // 翻译失败时使用原文
+                }
+            }
             
             // 根据消息类型分发
             if ("ping".equals(type)) {
@@ -154,10 +174,10 @@ public class NativeWebSocket {
                 result = agentService.processImage(clientSessionId, userId, imageBase64, lat, lng);
             } else if ("confirm".equals(type)) {
                 // 用户确认选择（传递位置信息）
-                result = agentService.confirmSelection(clientSessionId, userId, content, lat, lng);
-            } else if (content != null && !content.trim().isEmpty()) {
-                // 普通文本消息（必须有内容）
-                result = agentService.processIntention(clientSessionId, userId, content, lat, lng);
+                result = agentService.confirmSelection(clientSessionId, userId, processedContent, lat, lng);
+            } else if (processedContent != null && !processedContent.trim().isEmpty()) {
+                // 普通文本消息（必须有内容，使用翻译后的内容）
+                result = agentService.processIntention(clientSessionId, userId, processedContent, lat, lng);
             } else {
                 // 无效消息（既不是 ping，也没有内容）
                 log.warn("⚠️ 收到无效消息：type={}, content={}", type, content);

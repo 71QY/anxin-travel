@@ -74,8 +74,12 @@ public class UserController {
         return Result.success();
     }
     
+    /**
+     * 用户上传头像
+     * 【关键修复】参数名改为 avatar，与前端文档保持一致
+     */
     @PostMapping("/avatar")
-    public Result<String> uploadAvatar(@RequestParam("avatarFile") MultipartFile avatarFile) {
+    public Result<String> uploadAvatar(@RequestParam("avatar") MultipartFile avatarFile) {
         Long userId = UserContext.getUserId();
         String avatarUrl = userService.uploadAvatar(userId, avatarFile);
         return Result.success(avatarUrl);

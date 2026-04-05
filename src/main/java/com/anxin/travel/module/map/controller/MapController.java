@@ -244,8 +244,9 @@ public class MapController {
                 sessionId, targetPoi.getName(), targetPoi.getLat(), targetPoi.getLng());
             
             // 3. 计算路线
-            String origin = String.format("%.6f,%.6f", lat, lng);
-            String destination = String.format("%.6f,%.6f", targetPoi.getLat(), targetPoi.getLng());
+            // 【关键修复】高德 API 要求坐标格式：lng,lat（经度，纬度）
+            String origin = String.format("%.6f,%.6f", lng, lat);                  // lng,lat
+            String destination = String.format("%.6f,%.6f", targetPoi.getLng(), targetPoi.getLat());  // lng,lat
             
             log.info("🗺️ 开始计算路线：origin={}, destination={}", origin, destination);
             com.anxin.travel.module.map.dto.RouteResult route = amapClient.getRoute(origin, destination, mode);

@@ -1029,11 +1029,31 @@ public class AmapClient {
     /**
      * 路线规划
      * 【关键修复】高德 API 要求坐标格式：lng,lat（经度，纬度）
+     * 【性能优化】添加 Redis 缓存，减少重复请求
      */
     public RouteResult getRoute(String origin, String destination, String mode) {
         log.info("🗺️ 路线规划：origin={}, destination={}, mode={}", origin, destination, mode);
         
+        // 【性能优化】生成缓存 key
+        String cacheKey = String.format("route:%s:%s:%s", mode, origin, destination);
+        
         try {
+            // 1. 尝试从缓存获取（5 分钟有效期）
+            if (redisUtil != null) {
+                try {
+                    String cachedJson = redisUtil.get(cacheKey);
+                    if (cachedJson != null && !cachedJson.isEmpty()) {
+                        log.info("✅ 使用缓存的路线数据，key={}", cacheKey);
+                        return JSON.parseObject(cachedJson, RouteResult.class);
+                    }
+                } catch (Exception e) {
+                    log.warn("读取路线缓存失败：{}", e.getMessage());
+                }
+            }
+            
+            // 2. 缓存未命中，调用高德 API
+            log.debug("缓存未命中，调用高德 API...");
+            
             // 【关键修复】验证坐标格式：必须是 lng,lat
             log.debug("原始坐标：origin={}, destination={}", origin, destination);
             
@@ -1080,6 +1100,16 @@ public class AmapClient {
             
             log.info("✅ 路线规划成功：距离={}m, 时长={}s, 价格={}元", 
                     route.getDistance(), route.getDuration(), route.getPrice());
+            
+            // 3. 写入缓存（5 分钟有效期）
+            if (redisUtil != null) {
+                try {
+                    redisUtil.set(cacheKey, JSON.toJSONString(route), 300); // 5 分钟
+                    log.info("💾 路线数据已缓存，key={}, 过期时间 300 秒", cacheKey);
+                } catch (Exception e) {
+                    log.warn("写入路线缓存失败：{}", e.getMessage());
+                }
+            }
             
             return route;
             

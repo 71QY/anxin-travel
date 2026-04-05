@@ -144,49 +144,87 @@ public class UserServiceImpl implements UserService {
     
     @Override
     public String uploadAvatar(Long userId, MultipartFile avatarFile) {
+        // 1. 验证文件是否为空
         if (avatarFile == null || avatarFile.isEmpty()) {
-            throw new RuntimeException("头像文件不能为空");
+            throw new IllegalArgumentException("头像文件不能为空");
         }
         
-        String contentType = avatarFile.getContentType();
-        if (contentType == null || !contentType.startsWith("image/")) {
-            throw new RuntimeException("只能上传图片文件");
-        }
-        
-        long maxSize = 5 * 1024 * 1024;
+        // 2. 验证文件大小（10MB）
+        long maxSize = 10 * 1024 * 1024; // 10MB
         if (avatarFile.getSize() > maxSize) {
-            throw new RuntimeException("图片大小不能超过 5MB");
+            throw new IllegalArgumentException("图片大小超过限制（最大 10MB）");
+        }
+        
+        // 3. 验证文件类型（支持 JPEG/PNG/BMP）
+        String contentType = avatarFile.getContentType();
+        if (contentType == null || 
+            (!contentType.equals("image/jpeg") && 
+             !contentType.equals("image/png") && 
+             !contentType.equals("image/bmp"))) {
+            log.warn("不支持的图片格式：{}", contentType);
+            throw new IllegalArgumentException("不支持的图片格式，仅支持 JPEG/PNG/BMP");
         }
         
         try {
-            String fileName = "avatar_" + userId + "_" + System.currentTimeMillis() + ".jpg";
+            // 4. 生成唯一文件名
+            String originalFilename = avatarFile.getOriginalFilename();
+            String extension = ".jpg"; // 默认扩展名
+            
+            if (originalFilename != null && originalFilename.contains(".")) {
+                String ext = originalFilename.substring(originalFilename.lastIndexOf(".")).toLowerCase();
+                if (ext.equals(".png") || ext.equals(".bmp")) {
+                    extension = ext;
+                }
+            }
+            
+            String fileName = "user_" + userId + "_" + System.currentTimeMillis() + extension;
             String uploadDir = System.getProperty("user.dir") + "/uploads/avatars/";
             
+            // 5. 确保上传目录存在
             File uploadPath = new File(uploadDir);
             if (!uploadPath.exists()) {
                 uploadPath.mkdirs();
             }
             
+            // 6. 删除旧头像（如果存在）
+            User user = userMapper.selectById(userId);
+            if (user != null && user.getAvatar() != null && !user.getAvatar().isEmpty()) {
+                String oldFileName = user.getAvatar().substring(user.getAvatar().lastIndexOf("/") + 1);
+                String oldFilePath = uploadDir + oldFileName;
+                File oldFile = new File(oldFilePath);
+                if (oldFile.exists() && oldFile.delete()) {
+                    log.info("✅ 已删除旧头像：{}", oldFilePath);
+                }
+            }
+            
+            // 7. 保存新头像
             String filePath = uploadDir + fileName;
             avatarFile.transferTo(new File(filePath));
             
+            // 8. 生成访问 URL
             String avatarUrl = "/api/user/avatar/" + fileName;
             
-            User user = new User();
-            user.setId(userId);
-            user.setAvatar(avatarUrl);
-            userMapper.updateById(user);
+            // 9. 更新数据库
+            User updateUser = new User();
+            updateUser.setId(userId);
+            updateUser.setAvatar(avatarUrl);
+            userMapper.updateById(updateUser);
             
-            log.info("头像上传成功，userId={}, avatarUrl={}", userId, avatarUrl);
+            log.info("✅ 头像上传成功：userId={}, avatarUrl={}, size={}KB", 
+                userId, avatarUrl, avatarFile.getSize() / 1024);
             return avatarUrl;
+            
+        } catch (IllegalArgumentException e) {
+            // 参数校验异常，直接抛出
+            throw e;
         } catch (Exception e) {
-            log.error("头像上传失败", e);
-            throw new RuntimeException("头像上传失败：" + e.getMessage());
+            log.error("❌ 头像上传失败：userId={}", userId, e);
+            throw new RuntimeException("头像上传失败，请稍后重试");
         }
     }
     
     private boolean isValidPassword(String password) {
-        if (password == null || password.length() != 8) {
+        if (password == null || password.length() != 10) {
             return false;
         }
         boolean hasLetter = false;

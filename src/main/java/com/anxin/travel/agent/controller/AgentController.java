@@ -38,14 +38,13 @@ public class AgentController {
         Double lat = (Double) request.get("lat");
         Double lng = (Double) request.get("lng");
 
-        log.info("============ 智能搜索请求 ============");
-        log.info("sessionId={}, keyword={}, lat={}, lng={}", sessionId, keyword, lat, lng);
+        log.debug("智能搜索请求：sessionId={}, keyword={}", sessionId, keyword);
 
         try {
             // 直接获取统一的 AgentResponse 响应
             AgentResponse response = agentService.processIntention(sessionId, userId, keyword, lat, lng);
             
-            log.info("✅ 搜索成功，找到 {} 个地点", response.getPlaces() != null ? response.getPlaces().size() : 0);
+            log.debug("搜索成功，找到 {} 个地点", response.getPlaces() != null ? response.getPlaces().size() : 0);
             return Result.success(response);
         } catch (Exception e) {
             log.error("搜索失败", e);
@@ -106,29 +105,23 @@ public class AgentController {
             }
         }
 
-        log.info("============ 确认选择请求 ============");
-        log.info("sessionId={}, userId={}, selectedPoiName={}, lat={}, lng={}",
-                sessionId, userId, selectedPoiName, lat, lng);
+        log.debug("确认选择请求：sessionId={}, selectedPoiName={}", sessionId, selectedPoiName);
 
         // 参数校验（按前端文档要求的顺序）
         if (sessionId == null || sessionId.trim().isEmpty()) {
-            log.warn("❌ sessionId 缺失");
             return Result.error(400, "会话已过期");
         }
         
         if (selectedPoiName == null || selectedPoiName.trim().isEmpty()) {
-            log.warn("❌ selectedPoiName 缺失");
             return Result.error(400, "POI 名称不能为空");
         }
         
         if (lat == null || lng == null) {
-            log.warn("❌ 位置信息缺失：lat={}, lng={}", lat, lng);
             return Result.error(400, "位置信息缺失");
         }
         
         // 验证坐标范围
         if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-            log.warn("❌ 坐标超出范围：lat={}, lng={}", lat, lng);
             return Result.error(400, "经纬度坐标超出有效范围");
         }
 
@@ -136,8 +129,7 @@ public class AgentController {
             // 调用服务层，返回符合前端期望的 data 结构
             Object responseData = agentService.confirmSelection(sessionId, userId, selectedPoiName, lat, lng);
 
-            log.info("✅ 确认成功");
-            log.info("======================================");
+            log.debug("确认成功");
             
             // 按照前端文档返回完整结构
             // 注意：Result.success() 会自动将对象包装在 data 字段中
@@ -145,12 +137,10 @@ public class AgentController {
 
         } catch (IllegalArgumentException e) {
             // 参数校验失败，返回 400
-            log.error("❌ 参数校验失败", e);
-            log.info("======================================");
+            log.error("参数校验失败：{}", e.getMessage());
             return Result.error(400, e.getMessage());
         } catch (Exception e) {
-            log.error("❌ 确认失败", e);
-            log.info("======================================");
+            log.error("确认失败：{}", e.getMessage());
             // 直接返回错误，让前端显示具体错误信息
             return Result.error(500, "处理失败：" + e.getMessage());
         }
@@ -177,21 +167,41 @@ public class AgentController {
         Double lat = (Double) request.get("lat");
         Double lng = (Double) request.get("lng");
 
-        log.info("============ 图片识别请求 ============");
-        log.info("sessionId={}, userId={}, lat={}, lng={}, imageLength={}",
-                sessionId, userId, lat, lng, imageBase64 != null ? imageBase64.length() : 0);
+        log.debug("图片识别请求：sessionId={}, imageLength={}",
+                sessionId, imageBase64 != null ? imageBase64.length() : 0);
 
         try {
             AgentResponse response = agentService.processImage(sessionId, userId, imageBase64, lat, lng);
 
-            log.info("✅ 图片识别成功");
-            log.info("======================================");
+            log.debug("图片识别成功");
             return Result.success(response);
 
+        } catch (IllegalArgumentException e) {
+            // 参数校验失败（图片格式、大小等）
+            log.warn("图片参数校验失败：{}", e.getMessage());
+            return Result.error(400, e.getMessage());
+            
+        } catch (RuntimeException e) {
+            // 业务异常（API 调用失败、识别失败等）
+            log.error("图片识别业务异常：{}", e.getMessage());
+            
+            // 根据错误信息判断具体错误类型
+            String errorMsg = e.getMessage();
+            if (errorMsg != null && errorMsg.contains("API")) {
+                // API 服务异常
+                return Result.error(503, "图片识别服务暂时不可用，请稍后重试");
+            } else if (errorMsg != null && errorMsg.contains("未识别到")) {
+                // 识别结果为空
+                return Result.error(422, errorMsg);
+            } else {
+                // 其他业务异常
+                return Result.error(500, "图片识别失败：" + errorMsg);
+            }
+            
         } catch (Exception e) {
-            log.error("❌ 图片识别失败", e);
-            log.info("======================================");
-            return Result.error("图片识别失败：" + e.getMessage());
+            // 未知异常
+            log.error("图片识别发生未知异常", e);
+            return Result.error(500, "图片识别失败：系统异常，请稍后重试");
         }
     }
 
@@ -204,7 +214,7 @@ public class AgentController {
 
         String sessionId = (String) request.get("sessionId");
 
-        log.info("清理会话：sessionId={}", sessionId);
+        log.debug("清理会话：sessionId={}", sessionId);
 
         try {
             agentService.cleanupSession(sessionId);
@@ -226,7 +236,7 @@ public class AgentController {
         Double lat = (Double) request.get("lat");
         Double lng = (Double) request.get("lng");
 
-        log.info("更新位置：sessionId={}, lat={}, lng={}", sessionId, lat, lng);
+        log.debug("更新位置：sessionId={}, lat={}, lng={}", sessionId, lat, lng);
 
         try {
             agentService.updateUserLocation(sessionId, lat, lng);

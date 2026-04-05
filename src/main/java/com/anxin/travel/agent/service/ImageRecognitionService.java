@@ -40,17 +40,17 @@ public class ImageRecognitionService {
             throw new IllegalArgumentException("不支持的图片格式，仅支持 JPEG/PNG/BMP/WEBP");
         }
         
-        // 限制图片大小（5MB）
-        int maxSize = 5 * 1024 * 1024; // 5MB
+        // 限制图片大小（10MB）- 通义千问支持最大 10MB 的图片
+        int maxSize = 10 * 1024 * 1024; // 10MB
         if (imageBase64.length() > maxSize) {
-            log.warn("图片过大：{} bytes, 尝试自动压缩...", imageBase64.length());
-            // TODO: 这里可以添加图片压缩逻辑，暂时直接拒绝
-            throw new IllegalArgumentException("图片大小不能超过 5MB，请先压缩后重试");
+            log.warn("图片过大：{} bytes ({} MB), 超过 10MB 限制", imageBase64.length(), imageBase64.length() / 1024 / 1024);
+            throw new IllegalArgumentException("图片大小不能超过 10MB，请先压缩后重试");
         }
         
-        // 建议大小检查（超过 1MB 给出警告）
-        if (imageBase64.length() > 1024 * 1024) {
-            log.warn("图片较大：{} bytes，建议压缩到 1MB 以内以提高识别速度", imageBase64.length());
+        // 建议大小检查（超过 3MB 给出警告，但不拒绝）
+        if (imageBase64.length() > 3 * 1024 * 1024) {
+            log.warn("图片较大：{} bytes ({} MB)，建议压缩到 3MB 以内以提高识别速度", 
+                imageBase64.length(), imageBase64.length() / 1024 / 1024);
         }
         
         try {
@@ -96,16 +96,87 @@ public class ImageRecognitionService {
             log.info("通义 VL 识别结果：{}", resp);
 
             JSONObject json = JSON.parseObject(resp);
-            String result = json.getJSONObject("output")
-                    .getJSONObject("choices")
-                    .getJSONArray("message")
-                    .getJSONObject(0)
-                    .getString("content");
+            
+            // 检查是否有错误信息
+            if (json.containsKey("code") || json.containsKey("error")) {
+                String errorCode = json.getString("code");
+                String errorMsg = json.getString("message") != null ? json.getString("message") : json.getString("error");
+                log.error("通义千问 API 返回错误：code={}, message={}", errorCode, errorMsg);
+                throw new RuntimeException("图片识别服务异常：" + errorMsg);
+            }
+            
+            // 安全解析响应结构，添加空值检查
+            JSONObject output = json.getJSONObject("output");
+            if (output == null) {
+                log.error("API 响应中缺少 output 字段，完整响应：{}", resp);
+                throw new RuntimeException("图片识别失败：API 响应格式异常");
+            }
+            
+            // 注意：choices 是数组，不是对象
+            JSONArray choicesArray = output.getJSONArray("choices");
+            if (choicesArray == null || choicesArray.isEmpty()) {
+                log.error("API 响应中 choices 数组为空，完整响应：{}", resp);
+                throw new RuntimeException("图片识别失败：API 响应格式异常");
+            }
+            
+            // 获取第一个 choice 对象
+            JSONObject firstChoice = choicesArray.getJSONObject(0);
+            if (firstChoice == null) {
+                log.error("API 响应中第一个 choice 为空，完整响应：{}", resp);
+                throw new RuntimeException("图片识别失败：响应解析异常");
+            }
+            
+            // 获取 message 对象
+            JSONObject messageObj = firstChoice.getJSONObject("message");
+            if (messageObj == null) {
+                log.error("API 响应中缺少 message 字段，完整响应：{}", resp);
+                throw new RuntimeException("图片识别失败：响应解析异常");
+            }
+            
+            // 获取 content（注意：content 也是数组）
+            Object contentObj = messageObj.get("content");
+            String result;
+            
+            if (contentObj instanceof JSONArray) {
+                // content 是数组格式：[{"text": "..."}]
+                JSONArray contentArray = (JSONArray) contentObj;
+                if (contentArray == null || contentArray.isEmpty()) {
+                    log.warn("识别结果为空，可能图片中没有文字信息");
+                    return "未识别到地址信息";
+                }
+                
+                // 提取 text 字段
+                JSONObject firstContent = contentArray.getJSONObject(0);
+                result = firstContent != null ? firstContent.getString("text") : null;
+                
+            } else if (contentObj instanceof String) {
+                // content 是字符串格式："..."
+                result = (String) contentObj;
+                
+            } else {
+                log.error("未知的 content 格式：{}", contentObj != null ? contentObj.getClass().getName() : "null");
+                throw new RuntimeException("图片识别失败：响应格式异常");
+            }
+            
+            if (result == null || result.trim().isEmpty()) {
+                log.warn("识别结果为空，可能图片中没有文字信息");
+                return "未识别到地址信息";
+            }
 
+            log.info("✅ OCR 识别成功，提取文字：{}", result);
             return result;
 
+        } catch (IllegalArgumentException e) {
+            // 参数校验异常，直接抛出
+            log.warn("图片参数校验失败：{}", e.getMessage());
+            throw e;
+        } catch (RuntimeException e) {
+            // 业务异常，保留原始错误信息
+            log.error("图片识别业务异常：{}", e.getMessage());
+            throw e;
         } catch (Exception e) {
-            log.error("图片 OCR 识别失败", e);
+            // 其他未知异常
+            log.error("图片 OCR 识别发生未知异常", e);
             throw new RuntimeException("图片识别失败：" + e.getMessage());
         }
     }
