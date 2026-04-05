@@ -270,22 +270,47 @@ public class NativeWebSocket {
         // 关键修复：处理 AgentResponse 类型
         if (result instanceof com.anxin.travel.agent.dto.AgentResponse) {
             com.anxin.travel.agent.dto.AgentResponse agentResponse = (com.anxin.travel.agent.dto.AgentResponse) result;
-            response.put("type", agentResponse.getType().toLowerCase());
-            response.put("success", agentResponse.getSuccess());
-            response.put("message", agentResponse.getMessage());
             
-            if ("SEARCH".equals(agentResponse.getType()) && agentResponse.getPlaces() != null) {
+            // 设置 type（转为小写）
+            String responseType = agentResponse.getType() != null ? agentResponse.getType().toLowerCase() : "chat_reply";
+            response.put("type", responseType);
+            response.put("success", agentResponse.getSuccess() != null ? agentResponse.getSuccess() : true);
+            response.put("message", agentResponse.getMessage() != null ? agentResponse.getMessage() : "");
+            
+            // 根据类型构建不同的响应结构
+            if ("image_recognition".equals(responseType)) {
+                // ✅ 图片识别响应：包含 ocrText、places/order/message
+                response.put("data", agentResponse.getData());
+                
+                // 如果 data 中有 places，也放到顶层方便前端访问
+                if (agentResponse.getData() instanceof Map) {
+                    Map<?, ?> dataMap = (Map<?, ?>) agentResponse.getData();
+                    if (dataMap.containsKey("places")) {
+                        response.put("places", dataMap.get("places"));
+                    }
+                    if (dataMap.containsKey("ocrText")) {
+                        response.put("ocrText", dataMap.get("ocrText"));
+                    }
+                }
+                
+                log.info("✅ WebSocket 返回图片识别结果：type={}, hasPlaces={}", 
+                    responseType, agentResponse.getPlaces() != null && !agentResponse.getPlaces().isEmpty());
+                    
+            } else if ("search".equals(responseType) && agentResponse.getPlaces() != null) {
                 // 搜索响应：包含 POI 列表
                 response.put("data", agentResponse.getPlaces());
                 response.put("places", agentResponse.getPlaces());
                 response.put("needConfirm", true);
-            } else if ("ORDER".equals(agentResponse.getType()) && agentResponse.getData() != null) {
+                
+            } else if ("order".equals(responseType) && agentResponse.getData() != null) {
                 // 订单响应：包含订单数据
                 response.put("data", agentResponse.getData());
-            } else if ("CHAT".equals(agentResponse.getType())) {
+                
+            } else if ("chat".equals(responseType)) {
                 // 聊天响应：仅消息
                 response.put("content", agentResponse.getMessage());
             }
+            
         } else if (result instanceof java.util.List) {
             // POI 列表（旧版兼容）
             response.put("type", "poi_list");

@@ -1257,27 +1257,50 @@ public class AgentService {
             // ④ 执行意图
             ExecutionResult execResult = executeIntent(sessionId, userId, intent, lat, lng);
             
-            // ⑤ 构建响应
+            // ⑤ 构建响应（严格按前端文档格式）
             AgentResponse response = new AgentResponse();
-            response.setType("image_recognition");
+            response.setType("IMAGE_RECOGNITION");  // 明确标识为图片识别
             response.setSuccess(true);
+            response.setMessage("图片识别成功");
             
+            // 构建 data 对象，包含所有前端需要的字段
             Map<String, Object> data = new HashMap<>();
-            data.put("ocrText", extractedText);
-            if (execResult.getPlaces() != null) {
+            data.put("ocrText", extractedText != null ? extractedText : "");  // OCR 识别的文字
+            
+            // 如果有搜索结果，添加 places 数组
+            if (execResult.getPlaces() != null && !execResult.getPlaces().isEmpty()) {
                 data.put("places", execResult.getPlaces());
-            } else if (execResult.getOrderData() != null) {
+                response.setPlaces(execResult.getPlaces());  // 同时设置到顶层字段
+                log.info("✅ 图片识别后找到 {} 个地点", execResult.getPlaces().size());
+            } 
+            // 如果直接下单成功，添加 order 对象
+            else if (execResult.getOrderData() != null) {
                 data.put("order", execResult.getOrderData());
-            } else {
-                data.put("message", execResult.getMessage());
+                log.info("✅ 图片识别后直接创建订单");
+            } 
+            // 其他情况，添加 message
+            else {
+                data.put("message", execResult.getMessage() != null ? execResult.getMessage() : "未找到相关地点");
             }
             
-            response.setData(data);
+            response.setData(data);  // 将完整数据放入 data 字段
             return response;
             
         } catch (Exception e) {
             log.error("图片识别失败", e);
-            return AgentResponse.error("图片识别失败：" + e.getMessage());
+            // 返回错误响应，包含详细错误信息
+            AgentResponse errorResponse = new AgentResponse();
+            errorResponse.setType("IMAGE_RECOGNITION");
+            errorResponse.setSuccess(false);
+            errorResponse.setMessage("图片识别失败：" + e.getMessage());
+            errorResponse.setError(e.getMessage());
+            
+            Map<String, Object> errorData = new HashMap<>();
+            errorData.put("ocrText", "");
+            errorData.put("message", "识别失败：" + e.getMessage());
+            errorResponse.setData(errorData);
+            
+            return errorResponse;
         }
     }
 

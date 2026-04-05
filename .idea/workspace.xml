@@ -6,21 +6,10 @@
   <component name="ChangeListManager">
     <list default="true" id="7c5536af-c7f0-44f5-ac4b-bb8c2fe2da43" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/COMPLETE_SOURCE_CODE_SUMMARY.md" beforeDir="false" afterPath="$PROJECT_DIR$/COMPLETE_SOURCE_CODE_SUMMARY.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/ai/TongyiQianwenClient.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/ai/TongyiQianwenClient.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/AgentController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/AgentController.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/NativeWebSocket.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/NativeWebSocket.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/AgentService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/AgentService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/ImageRecognitionService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/ImageRecognitionService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/MemoryService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/MemoryService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/config/GlobalExceptionHandler.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/config/GlobalExceptionHandler.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/auth/service/impl/AuthServiceImpl.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/auth/service/impl/AuthServiceImpl.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/client/AmapClient.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/client/AmapClient.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/controller/MapController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/controller/MapController.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/impl/OrderServiceImpl.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/impl/OrderServiceImpl.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/controller/UserController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/controller/UserController.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/service/impl/UserServiceImpl.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/service/impl/UserServiceImpl.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/avatars/avatar_7_1775297403075.jpg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/SearchStrategyEngine.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/SearchStrategyEngine.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/config/WebSocketNativeConfig.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/config/WebSocketNativeConfig.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
