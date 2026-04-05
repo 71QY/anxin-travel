@@ -36,3 +36,10 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### Sensitive Files ###
+.env
+*.log
+hs_err_pid*.log
+replay_pid*.log
+uploads/

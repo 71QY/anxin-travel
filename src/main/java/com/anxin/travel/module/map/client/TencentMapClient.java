@@ -351,6 +351,82 @@ public class TencentMapClient {
     }
 
     /**
+     * 路线规划 API（驾车）
+     * 接口文档：https://lbs.qq.com/service/webService/webServiceGuide/direction
+     * @param origin 起点坐标，格式："lng,lat"
+     * @param destination 终点坐标，格式："lng,lat"
+     * @return 路线结果，失败返回 null
+     */
+    public com.anxin.travel.module.map.dto.RouteResult getRoute(String origin, String destination) {
+        String cacheKey = String.format("tencent_route:%s:%s", origin, destination);
+        
+        // 1. 先检查 Redis 缓存
+        try {
+            String cached = redisUtil.get(cacheKey);
+            if (cached != null && !cached.isEmpty()) {
+                log.info("命中腾讯路线规划缓存：{}", cacheKey);
+                return JSON.parseObject(cached, com.anxin.travel.module.map.dto.RouteResult.class);
+            }
+        } catch (Exception e) {
+            log.warn("读取缓存失败：{}", e.getMessage());
+        }
+
+        String url = String.format(
+            "https://apis.map.qq.com/ws/direction/v1/driving/?from=%s&to=%s&key=%s",
+            origin, destination, apiKey
+        );
+        
+        log.info("🗺️ 腾讯路线规划请求 URL: {}", url);
+        
+        try {
+            ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
+            JSONObject json = JSON.parseObject(response.getBody());
+            
+            if (json.getInteger("status") == 0) {
+                JSONObject result = json.getJSONObject("result");
+                if (result != null) {
+                    JSONArray routes = result.getJSONArray("routes");
+                    if (routes != null && !routes.isEmpty()) {
+                        JSONObject route = routes.getJSONObject(0);
+                        
+                        com.anxin.travel.module.map.dto.RouteResult routeResult = new com.anxin.travel.module.map.dto.RouteResult();
+                        routeResult.setDistance(route.getInteger("distance"));  // 单位：米
+                        routeResult.setDuration(route.getInteger("duration"));  // 单位：秒
+                        
+                        // 估算价格（按每公里 2.5 元计算）
+                        double price = route.getInteger("distance") / 1000.0 * 2.5;
+                        routeResult.setPrice(Math.round(price * 100.0) / 100.0);  // 保留两位小数
+                        
+                        log.info("✅ 腾讯路线规划成功：距离={}m, 时长={}s, 价格={}元", 
+                                routeResult.getDistance(), routeResult.getDuration(), routeResult.getPrice());
+                        
+                        // 写入缓存（5 分钟）
+                        try {
+                            redisUtil.set(cacheKey, JSON.toJSONString(routeResult), 300);
+                            log.info("已缓存腾讯路线规划结果，key={}, 过期时间 300 秒", cacheKey);
+                        } catch (Exception e) {
+                            log.warn("写入缓存失败：{}", e.getMessage());
+                        }
+                        
+                        return routeResult;
+                    }
+                }
+                
+                log.warn("⚠️ 腾讯路线规划无结果");
+                return null;
+            } else {
+                log.error("❌ 腾讯路线规划失败，状态码：{}, 信息：{}", 
+                         json.getInteger("status"), json.getString("message"));
+                return null;
+            }
+            
+        } catch (Exception e) {
+            log.error("❌ 腾讯路线规划请求失败", e);
+            return null;
+        }
+    }
+
+    /**
      * 获取 API Key（供测试使用）
      */
     public String getApiKey() {

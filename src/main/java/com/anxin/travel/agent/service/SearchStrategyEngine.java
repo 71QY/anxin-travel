@@ -76,87 +76,23 @@ public class SearchStrategyEngine {
     }
     
     /**
-     * 执行高德地图降级搜索策略
+     * 执行高德地图降级搜索策略（优化版：快速切换到全国搜索）
      */
     private void executeAmapFallback(String keyword, double lat, double lng, 
                                      List<PoiDTO> allResults, Set<String> uniqueKey) {
         log.info("🗺️ 开始高德地图补充搜索...");
         
-        // 2.1 地理编码优先（仅当 keyword 像地址）
-        if (isAddressLike(keyword) && allResults.size() < 3) {
-            try {
-                List<PoiDTO> geocodeResults = amapClient.searchByGeocode(keyword, lat, lng);
-                addUnique(geocodeResults, allResults, uniqueKey);
-            } catch (Exception e) {
-                log.error("❌ 地理编码失败", e);
-            }
-        }
-        
-        // 2.2 本地城市精确搜索
-        if (allResults.size() < 3) {
-            String adcode = amapClient.getAdcodeByLocation(lat, lng);
-            if (adcode != null) {
-                try {
-                    List<PoiDTO> localResults = amapClient.searchNearbyPlaces(
-                            keyword, lat, lng, 1, 20, true, false, 10000, true, null);
-                    addUnique(localResults, allResults, uniqueKey);
-                } catch (Exception e) {
-                    log.error("❌ 本地搜索失败", e);
-                }
-            }
-        }
-
-        // 2.3 扩大半径到 50km
+        // 【优化】直接尝试全国搜索，避免多级降级的延迟
         if (allResults.size() < 3) {
             try {
-                List<PoiDTO> radiusResults = amapClient.searchNearbyPlaces(
-                        keyword, lat, lng, 1, 20, true, false, 50000, true, null);
-                addUnique(radiusResults, allResults, uniqueKey);
-            } catch (Exception e) {
-                log.error("❌ 扩大半径失败", e);
-            }
-        }
-
-        // 2.4 周边城市搜索
-        if (allResults.size() < 3) {
-            String nearbyAdcode = amapClient.getAdcodeByLocation(lat, lng);
-            if (nearbyAdcode != null) {
-                try {
-                    List<String> nearbyAdcodes = getNearbyAdcodes(nearbyAdcode);
-                    for (String nearbyAdcodeValue : nearbyAdcodes) {
-                        if (allResults.size() >= 15) break;
-                        double[] cityCenter = getCityCenter(nearbyAdcodeValue);
-                        if (cityCenter != null) {
-                            List<PoiDTO> nearbyResults = amapClient.searchNearbyPlaces(
-                                    keyword, cityCenter[0], cityCenter[1], 1, 20, 
-                                    true, false, 50000, true, null);
-                            addUnique(nearbyResults, allResults, uniqueKey);
-                        }
-                    }
-                } catch (Exception e) {
-                    log.error("❌ 周边城市搜索失败", e);
-                }
-            }
-        }
-
-        // 2.5 省级搜索
-        if (allResults.size() < 3) {
-            try {
-                List<PoiDTO> provinceResults = amapClient.searchNearbyPlaces(
-                        keyword, lat, lng, 1, 20, true, true, 50000, true, null);
-                addUnique(provinceResults, allResults, uniqueKey);
-            } catch (Exception e) {
-                log.error("❌ 省级搜索失败", e);
-            }
-        }
-
-        // 2.6 全国搜索（最终兜底）+ 质量门判断
-        if (allResults.size() < 3) {
-            try {
+                log.info("🚀 直接调用高德全国搜索：keyword={}", keyword);
                 List<PoiDTO> nationwideResults = amapClient.searchByKeywordNationwide(keyword, 1, 20);
                 
                 if (nationwideResults != null && !nationwideResults.isEmpty()) {
-                    final double MAX_ACCEPTABLE_DISTANCE = 500_000; // 500km
+                    // 【关键修复】知名地标放宽距离限制到 2000km
+                    final double MAX_ACCEPTABLE_DISTANCE = isFamousLandmark(keyword) ? 2_000_000 : 500_000;
+                    log.info("📏 距离限制：{}km (知名地标: {})", MAX_ACCEPTABLE_DISTANCE / 1000, isFamousLandmark(keyword));
+                    
                     List<PoiDTO> filteredResults = new ArrayList<>();
                     
                     for (PoiDTO poi : nationwideResults) {
@@ -168,14 +104,46 @@ public class SearchStrategyEngine {
                         }
                     }
                     
-                    if (isResultQualityAcceptable(filteredResults, keyword)) {
+                    if (!filteredResults.isEmpty()) {
+                        log.info("✅ 高德全国搜索找到 {} 个结果（过滤后）", filteredResults.size());
                         addUnique(filteredResults, allResults, uniqueKey);
+                    } else {
+                        log.warn("⚠️ 高德全国搜索结果全部超出距离限制");
                     }
+                } else {
+                    log.warn("⚠️ 高德全国搜索无结果");
                 }
             } catch (Exception e) {
-                log.error("❌ 全国搜索失败", e);
+                log.error("❌ 高德全国搜索失败", e);
             }
         }
+    }
+    
+    /**
+     * 判断是否为知名地标（需要跨城搜索）
+     */
+    private boolean isFamousLandmark(String keyword) {
+        if (keyword == null || keyword.isEmpty()) {
+            return false;
+        }
+        
+        // 知名大学
+        if (keyword.contains("北京大学") || keyword.contains("清华大学") || 
+            keyword.contains("复旦大学") || keyword.contains("上海交通大学") ||
+            keyword.contains("浙江大学") || keyword.contains("南京大学") ||
+            keyword.contains("中国人民大学") || keyword.contains("武汉大学") ||
+            keyword.contains("中山大学") || keyword.contains("韩山师范学院")) {
+            return true;
+        }
+        
+        // 知名景点
+        if (keyword.contains("故宫") || keyword.contains("长城") || keyword.contains("天安门") ||
+            keyword.contains("东方明珠") || keyword.contains("西湖") || keyword.contains("黄山") ||
+            keyword.contains("兵马俑") || keyword.contains("布达拉宫")) {
+            return true;
+        }
+        
+        return false;
     }
     
     /**

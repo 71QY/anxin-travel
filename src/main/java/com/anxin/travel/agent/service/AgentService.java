@@ -6,6 +6,7 @@ import com.anxin.travel.agent.dto.AgentResponse;
 import com.anxin.travel.agent.model.AgentIntent;
 import com.anxin.travel.agent.model.AgentState;
 import com.anxin.travel.module.map.client.AmapClient;
+import com.anxin.travel.module.map.client.TencentMapClient;
 import com.anxin.travel.module.map.dto.PoiDTO;
 import com.anxin.travel.module.map.dto.RouteResult;
 import com.anxin.travel.module.order.dto.CreateOrderRequest;
@@ -22,6 +23,7 @@ public class AgentService {
 
     private final MemoryService memoryService;
     private final AmapClient amapClient;
+    private final TencentMapClient tencentMapClient;  // 新增：腾讯地图客户端
     private final OrderService orderService;
     private final TongyiQianwenClient tongyiClient;
     private final ImageRecognitionService imageRecognitionService;
@@ -32,7 +34,10 @@ public class AgentService {
     private static final Set<String> FAMOUS_LANDMARKS = Set.of(
         "故宫", "长城", "天安门", "东方明珠", "西湖", "黄山", "九寨沟",
         "兵马俑", "布达拉宫", "鼓浪屿", "张家界", "泰山", "庐山", "峨眉山",
-        "颐和园", "天坛", "鸟巢", "水立方", "外滩", "自由女神像", "埃菲尔铁塔"
+        "颐和园", "天坛", "鸟巢", "水立方", "外滩", "自由女神像", "埃菲尔铁塔",
+        // 知名大学
+        "北京大学", "清华大学", "复旦大学", "上海交通大学", "浙江大学", "南京大学",
+        "中国人民大学", "中国科学技术大学", "武汉大学", "华中科技大学", "中山大学"
     );
     
     // 新增：知名地标坐标缓存（用于高德搜索失败时的备选方案）
@@ -62,6 +67,12 @@ public class AgentService {
         FAMOUS_LANDMARK_COORDINATES.put("广州塔", new double[]{23.109, 113.319});
         // 韩山师范学院
         FAMOUS_LANDMARK_COORDINATES.put("韩山师范学院", new double[]{23.6705, 116.6547});
+        // 知名大学
+        FAMOUS_LANDMARK_COORDINATES.put("北京大学", new double[]{39.986940, 116.305700});
+        FAMOUS_LANDMARK_COORDINATES.put("清华大学", new double[]{40.003200, 116.326800});
+        FAMOUS_LANDMARK_COORDINATES.put("复旦大学", new double[]{31.297640, 121.503700});
+        FAMOUS_LANDMARK_COORDINATES.put("上海交通大学", new double[]{31.024900, 121.433600});
+        FAMOUS_LANDMARK_COORDINATES.put("浙江大学", new double[]{30.308600, 120.086200});
     }
     
     // 新增：搜索词纠偏字典（热点映射）- 用户习惯称呼 -> 标准名称
@@ -89,7 +100,8 @@ public class AgentService {
     }
 
     public AgentService(MemoryService memoryService, 
-                        AmapClient amapClient, 
+                        AmapClient amapClient,
+                        TencentMapClient tencentMapClient,  // 新增参数
                         OrderService orderService,
                         TongyiQianwenClient tongyiClient,
                         ImageRecognitionService imageRecognitionService,
@@ -97,6 +109,7 @@ public class AgentService {
                         SearchStrategyEngine searchStrategyEngine) {  // 新增参数
         this.memoryService = memoryService;
         this.amapClient = amapClient;
+        this.tencentMapClient = tencentMapClient;  // 注入腾讯地图客户端
         this.orderService = orderService;
         this.tongyiClient = tongyiClient;
         this.imageRecognitionService = imageRecognitionService;
@@ -625,14 +638,16 @@ public class AgentService {
         java.util.concurrent.CompletableFuture<Void> future = java.util.concurrent.CompletableFuture.runAsync(() -> {
             finalPoiList.forEach(poi -> {
                 try {
-                    // 【关键修复】高德 API 要求坐标格式：lng,lat（经度，纬度）
-                    String origin = String.format("%.6f,%.6f", currentLng, currentLat);  // lng,lat
-                    String destination = String.format("%.6f,%.6f", poi.getLng(), poi.getLat());  // lng,lat
+                    // 【关键修复】腾讯地图 API 要求坐标格式：lat,lng（纬度在前）
+                    String origin = String.format("%.6f,%.6f", currentLat, currentLng);  // lat,lng
+                    String destination = String.format("%.6f,%.6f", poi.getLat(), poi.getLng());  // lat,lng
                     log.debug("🗺️ 计算路线：origin={}, destination={}", origin, destination);
-                    com.anxin.travel.module.map.dto.RouteResult route = amapClient.getRoute(origin, destination, "driving");
+                    com.anxin.travel.module.map.dto.RouteResult route = tencentMapClient.getRoute(origin, destination);  // 使用腾讯地图
                     // 修复：不污染 address 字段，使用独立字段存储路线信息
-                    poi.setDuration(route.getDuration());
-                    poi.setPrice(route.getPrice());
+                    if (route != null) {
+                        poi.setDuration(route.getDuration());
+                        poi.setPrice(route.getPrice());
+                    }
                 } catch (Exception e) {
                     log.warn("❌ 计算路线失败：{}", poi.getName(), e);
                 }
@@ -1257,6 +1272,12 @@ public class AgentService {
             // ④ 执行意图
             ExecutionResult execResult = executeIntent(sessionId, userId, intent, lat, lng);
             
+            // 【关键修复】如果找到候选地点，保存到内存（供后续 confirmSelection 使用）
+            if (execResult.getPlaces() != null && !execResult.getPlaces().isEmpty()) {
+                memoryService.saveCandidates(sessionId, execResult.getPlaces());
+                log.info("💾 图片识别后保存候选 POI：sessionId={}, size={}", sessionId, execResult.getPlaces().size());
+            }
+            
             // ⑤ 构建响应（严格按前端文档格式）
             AgentResponse response = new AgentResponse();
             response.setType("IMAGE_RECOGNITION");  // 明确标识为图片识别
@@ -1378,13 +1399,13 @@ public class AgentService {
                 log.info("📍 使用缓存的位置信息：lat={}, lng={}", userLocation[0], userLocation[1]);
             }
             
-            // 4. 计算路线（注意：高德地图要求 lng,lat 格式，即经度在前，纬度在后）
-            String origin = String.format("%.6f,%.6f", userLocation[1], userLocation[0]);  // lng,lat
-            String destination = String.format("%.6f,%.6f", selected.getLng(), selected.getLat());  // lng,lat
+            // 4. 计算路线（使用腾讯地图，坐标格式：lat,lng）
+            String origin = String.format("%.6f,%.6f", userLocation[0], userLocation[1]);  // lat,lng
+            String destination = String.format("%.6f,%.6f", selected.getLat(), selected.getLng());  // lat,lng
             
-            log.info("🗺️ 开始调用地图 API 计算路线：origin={}, destination={}", origin, destination);
-            RouteResult route = amapClient.getRoute(origin, destination, "driving");
-            log.info("✅ 地图 API 返回：route={}", route);
+            log.info("🗺️ 开始调用腾讯地图 API 计算路线：origin={}, destination={}", origin, destination);
+            RouteResult route = tencentMapClient.getRoute(origin, destination);  // 使用腾讯地图
+            log.info("✅ 腾讯地图 API 返回：route={}", route);
             
             if (route == null) {
                 log.error("❌ 路线计算失败：origin={}, destination={}", origin, destination);

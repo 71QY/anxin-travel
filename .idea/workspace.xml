@@ -6,10 +6,9 @@
   <component name="ChangeListManager">
     <list default="true" id="7c5536af-c7f0-44f5-ac4b-bb8c2fe2da43" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/NativeWebSocket.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/NativeWebSocket.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/AgentService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/AgentService.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/SearchStrategyEngine.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/SearchStrategyEngine.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/config/WebSocketNativeConfig.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/config/WebSocketNativeConfig.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/client/TencentMapClient.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/map/client/TencentMapClient.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
