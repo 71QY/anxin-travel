@@ -10,4 +10,5 @@ public interface AuthService {
     LoginResponse passwordLogin(LoginRequest request);
     LoginResponse register(RegisterRequest request);
     void forgotPassword(String phone, String code, String newPassword);
+    void logout(Long userId);  // 退出登录，清除用户缓存
 }

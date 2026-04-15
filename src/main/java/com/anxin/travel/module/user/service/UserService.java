@@ -1,5 +1,6 @@
 package com.anxin.travel.module.user.service;
 
+import com.anxin.travel.module.user.dto.CompleteProfileRequest;
 import com.anxin.travel.module.user.dto.EmergencyContactRequest;
 import com.anxin.travel.module.user.dto.UserVO;
 import com.anxin.travel.module.user.entity.EmergencyContact;
@@ -15,4 +16,5 @@ public interface UserService {
     void deleteEmergencyContact(Long userId, Long id);
     void changePassword(Long userId, String phone, String code, String newPassword);
     String uploadAvatar(Long userId, MultipartFile avatarFile);
+    void completeProfile(Long userId, CompleteProfileRequest request);  // 完善账号信息
 }

@@ -1,0 +1,254 @@
+================================================================================
+                    地图搜索功能完整代码导出
+                    导出时间: 2026-04-08
+================================================================================
+
+目录结构:
+├── module/map/
+│   ├── controller/MapController.java          (控制器层 - API入口)
+│   ├── client/AmapClient.java                 (高德地图客户端)
+│   ├── client/TencentMapClient.java           (腾讯地图客户端)
+│   └── dto/
+│       ├── PoiDTO.java                        (POI数据传输对象)
+│       ├── RouteResult.java                   (路线规划结果)
+│       └── ReverseGeocodeResponse.java        (逆地理编码响应)
+├── agent/tool/MapTool.java                    (智能体工具)
+└── agent/service/SearchStrategyEngine.java    (搜索策略引擎)
+
+================================================================================
+1. MapController.java - 地图搜索控制器
+================================================================================
+文件路径: D:\callcar_text\idea-project\travel\src\main\java\com\anxin\travel\module\map\controller\MapController.java
+
+主要接口:
+- GET /api/map/search-destination          目的地搜索(主页搜索框)
+- GET /api/map/poi/nearby                  POI周边搜索
+- GET /api/map/poi/detail                  POI详情及路线规划
+- GET /api/map/geocode/reverse             逆地理编码
+- GET /api/map/route                       路线规划
+- POST /api/map/order/confirm              地图点击确认下单
+
+核心功能:
+1. 自动IP定位兜底
+2. 智能体服务集成(腾讯地图优先)
+3. POI详情获取与路线计算
+4. 评分排序输出
+
+
+================================================================================
+2. AmapClient.java - 高德地图API客户端
+================================================================================
+文件路径: D:\callcar_text\idea-project\travel\src\main\java\com\anxin\travel\module\map\client\AmapClient.java
+
+核心方法:
+
+① searchNearbyPlaces() - POI搜索主方法
+   - 支持全国搜索/周边搜索切换
+   - 地标/机构精确搜索 vs 周边设施模糊搜索
+   - 工业级评分排序算法(名称40% + 类别30% + 距离20% + 热度10%)
+   - 三级兜底策略保障结果返回
+   - Redis缓存机制(10分钟)
+
+② searchByKeywordNationwide() - 真正全国搜索
+   - 不带location参数,强制全国范围
+   - 用于Quality Gate触发后的降级搜索
+
+③ searchByCityWithTypes() - 城市精确搜索
+   - 带city+citylimit+types参数
+   - 优先同城匹配,减少脏数据
+
+④ reverseGeocode() - 逆地理编码
+   - 坐标转地址
+   - 5分钟缓存
+
+⑤ getRoute() - 路线规划
+   - 支持驾车/公交/步行模式
+   - 返回距离、时长、预估价格
+
+关键技术点:
+- TLSv1.2强制启用(解决SSL握手问题)
+- HttpClient连接池优化(最大50连接,单路由20)
+- 超时控制(连接3s,读取5s)
+- 浏览器级别请求头伪装
+- URL编码处理(UTF-8,+号替换为%20)
+
+
+================================================================================
+3. TencentMapClient.java - 腾讯地图API客户端
+================================================================================
+文件路径: D:\callcar_text\idea-project\travel\src\main\java\com\anxin\travel\module\map\client\TencentMapClient.java
+
+核心方法:
+
+① searchSuggestions() - 关键词输入提示
+   - 5分钟缓存
+   - 返回候选地点列表
+
+② searchNearbyPlaces() - 周边POI搜索
+   - boundary=nearby(lat,lng,radius)格式
+   - 10分钟缓存
+
+③ geocode() - 地理编码(地址转坐标)
+   - 30分钟缓存
+
+④ getRoute() - 驾车路线规划
+   - 返回距离、时长、预估价格(2.5元/公里)
+   - 5分钟缓存
+
+
+================================================================================
+4. DTO数据传输对象
+================================================================================
+
+① PoiDTO.java
+文件路径: D:\callcar_text\idea-project\travel\src\main\java\com\anxin\travel\module\map\dto\PoiDTO.java
+
+字段说明:
+- id: POI唯一标识
+- name: 地点名称
+- address: 详细地址
+- lat/lng: 经纬度坐标
+- distance: 距离(米)
+- type: POI类型编码
+- duration: 路线耗时(秒)
+- price: 路线价格(元)
+- score: 相关性评分(用于排序,@JsonProperty确保JSON序列化)
+
+② RouteResult.java
+文件路径: D:\callcar_text\idea-project\travel\src\main\java\com\anxin\travel\module\map\dto\RouteResult.java
+
+字段说明:
+- mode: 出行方式(driving/transit/walking)
+- duration: 耗时(秒)
+- distance: 距离(米)
+- price: 预估价格(元)
+
+③ ReverseGeocodeResponse.java
+文件路径: D:\callcar_text\idea-project\travel\src\main\java\com\anxin\travel\module\map\dto\ReverseGeocodeResponse.java
+
+字段说明:
+- address: 完整地址
+- province/city/district: 省市区
+- street/streetNumber: 街道门牌
+- lat/lng: 坐标
+
+
+================================================================================
+5. MapTool.java - 智能体地图工具
+================================================================================
+文件路径: D:\callcar_text\idea-project\travel\src\main\java\com\anxin\travel\agent\tool\MapTool.java
+
+功能: 供AI智能体调用的地图搜索工具
+- 工具名称: search_nearby_places
+- 参数: keyword, latitude, longitude
+- 执行逻辑: 调用AmapClient.searchNearbyPlaces(),半径5km,模糊匹配
+- 返回: CandidateDestination列表
+
+
+================================================================================
+6. SearchStrategyEngine.java - 搜索策略引擎
+================================================================================
+文件路径: D:\callcar_text\idea-project\travel\src\main\java\com\anxin\travel\agent\service\SearchStrategyEngine.java
+
+核心策略:
+
+① 腾讯地图优先搜索
+   - 第一优先级: 腾讯地图周边搜索
+   - 降级策略: 腾讯全国搜索
+
+② 高德地图补充搜索
+   - 仅当腾讯结果不足3个时触发
+   - 直接调用高德全国搜索(跳过多级降级)
+
+③ 质量门判断(Quality Gate)
+   - 最低评分阈值: 0.3
+   - 不相关结果过滤
+   - 知名地标特殊处理
+
+④ 统一排序
+   - 按综合评分降序排列
+   - 返回前20个最相关结果
+
+
+================================================================================
+7. 配置要求
+================================================================================
+
+application.yml 需要配置:
+
+anxin:
+  amap:
+    web-api-key: ${AMAP_WEB_API_KEY}  # 高德Web服务API Key
+  tencent:
+    map:
+      key: ${TENCENT_MAP_KEY}         # 腾讯地图Key
+
+Redis配置:
+- 用于POI搜索结果缓存
+- 用于地理编码缓存
+- 用于路线规划缓存
+
+
+================================================================================
+8. 核心技术特性
+================================================================================
+
+✅ 双地图服务商集成(高德+腾讯)
+✅ 智能搜索策略路由(地标vs设施)
+✅ 工业级评分排序算法
+✅ 三级兜底策略保障可用性
+✅ Redis多级缓存提升性能
+✅ TLSv1.2强制启用解决SSL问题
+✅ HttpClient连接池优化
+✅ IP自动定位兜底
+✅ 全国/周边搜索无缝切换
+✅ 模糊匹配与精确搜索结合
+✅ Quality Gate质量门控
+✅ 浏览器级别请求头伪装
+✅ 完善的日志追踪体系
+
+
+================================================================================
+9. API使用示例
+================================================================================
+
+① 目的地搜索:
+GET /api/map/search-destination?keyword=医院&lat=23.656&lng=116.622
+
+② POI周边搜索:
+GET /api/map/poi/nearby?keyword=餐厅&lat=23.656&lng=116.622&page=1&pageSize=20&radius=5000
+
+③ POI详情+路线:
+GET /api/map/poi/detail?poiName=潮州市人民医院&lat=23.656&lng=116.622&mode=driving
+
+④ 逆地理编码:
+GET /api/map/geocode/reverse?lat=23.656&lng=116.622
+
+⑤ 路线规划:
+GET /api/map/route?origin=116.622,23.656&destination=116.630,23.660&mode=driving
+
+
+================================================================================
+10. 注意事项
+================================================================================
+
+⚠️ 严禁修改事项:
+- 不要改动评分排序算法
+- 不要调整兜底策略逻辑
+- 不要修改TLS配置
+- 不要更改URL编码规则
+
+⚠️ 依赖检查:
+- 确保Redis服务正常运行
+- 确保高德/腾讯API Key有效
+- 确保HttpClient 5.x依赖已引入
+
+⚠️ 性能优化:
+- 缓存过期时间不宜过长(避免数据陈旧)
+- 连接池大小根据并发量调整
+- 超时时间根据网络环境微调
+
+
+================================================================================
+                         导出完成
+================================================================================

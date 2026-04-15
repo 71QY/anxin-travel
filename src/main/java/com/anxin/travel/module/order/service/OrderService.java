@@ -10,4 +10,10 @@ public interface OrderService {
     void cancelOrder(Long orderId, Long userId);
     void confirmOrder(Long orderId, Long userId);
     Page<OrderVO> listOrders(Long userId, Integer status, Integer page, Integer size);
+    
+    /**
+     * 【亲情守护】查询当前进行中的订单
+     * 支持：长辈(user_id) 或 亲友(proxy_user_id) 查询
+     */
+    OrderVO getCurrentOrder(Long userId);
 }

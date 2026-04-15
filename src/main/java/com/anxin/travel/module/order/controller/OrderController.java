@@ -69,4 +69,16 @@ public class OrderController {
         
         return Result.success(result);
     }
+    
+    /**
+     * 【亲情守护】查询当前进行中的订单
+     * 支持：长辈(user_id) 或 亲友(proxy_user_id) 查询
+     */
+    @GetMapping("/current")
+    public Result<OrderVO> getCurrentOrder() {
+        Long userId = UserContext.getUserId();
+        log.info("【亲情守护】查询当前订单，userId: {}", userId);
+        OrderVO order = orderService.getCurrentOrder(userId);
+        return Result.success(order);
+    }
 }

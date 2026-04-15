@@ -2,10 +2,12 @@ package com.anxin.travel.module.auth.service.impl;
 
 import com.anxin.travel.module.auth.service.SmsService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 @Slf4j
-@Service("mockSmsService")
+@Service
+@ConditionalOnProperty(name = "anxin.sms.provider", havingValue = "mock", matchIfMissing = true)
 public class MockSmsServiceImpl implements SmsService {
 
     @Override

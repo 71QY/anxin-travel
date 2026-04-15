@@ -17,6 +17,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.stream.Collectors;
 
@@ -27,6 +28,7 @@ public class OrderServiceImpl implements OrderService {
 
     private final OrderMapper orderMapper;
     private final com.anxin.travel.module.map.client.AmapClient amapClient;
+    private final com.anxin.travel.module.order.service.DriverAssignmentService driverAssignmentService;
 
     @Override
     @Transactional
@@ -65,11 +67,40 @@ public class OrderServiceImpl implements OrderService {
         int rows = orderMapper.insert(order);
         log.info("订单插入数据库，影响行数：{}, 订单号：{}, ID: {}", rows, orderNo, order.getId());
         
+        // ⭐ 异步分配模拟司机并启动位置推送
+        try {
+            driverAssignmentService.assignDriverAndStartSimulation(
+                order.getId(), userId, startLat, startLng, 
+                request.getDestLat(), request.getDestLng()
+            );
+            log.info("✅ 已触发司机分配任务，orderId={}", order.getId());
+        } catch (Exception e) {
+            log.error("❌ 触发司机分配失败，但订单已创建成功", e);
+        }
+        
         OrderVO vo = new OrderVO();
         BeanUtils.copyProperties(order, vo);
         vo.setPoiName(vo.getDestAddress());  // 【关键】前端期望 poiName 字段
-        log.info("✅ 订单创建成功：orderNo={}, poiName={}, destAddress={}, price={}", 
-            vo.getOrderNo(), vo.getPoiName(), vo.getDestAddress(), vo.getEstimatePrice());
+        
+        // ⭐ 生成随机司机信息并填充到返回结果（立即返回给前端）
+        Map<String, Object> driverInfo = driverAssignmentService.generateRandomDriverInfo();
+        vo.setDriverName((String) driverInfo.get("driverName"));
+        vo.setDriverPhone((String) driverInfo.get("driverPhone"));
+        vo.setDriverAvatar((String) driverInfo.get("driverAvatar"));
+        vo.setCarNo((String) driverInfo.get("carNo"));
+        vo.setCarType((String) driverInfo.get("carType"));
+        vo.setCarColor((String) driverInfo.get("carColor"));
+        vo.setRating((Double) driverInfo.get("rating"));
+        
+        // ⭐ 生成司机初始位置（起点附近300-800米），用于前端显示小车初始位置
+        Random random = new Random();
+        double offsetLat = (random.nextDouble() - 0.5) * 0.01;  // 约±500米
+        double offsetLng = (random.nextDouble() - 0.5) * 0.01;
+        vo.setDriverLat(startLat + offsetLat);
+        vo.setDriverLng(startLng + offsetLng);
+        
+        log.info("✅ 订单创建成功：orderNo={}, poiName={}, destAddress={}, price={}, driver={}", 
+            vo.getOrderNo(), vo.getPoiName(), vo.getDestAddress(), vo.getEstimatePrice(), vo.getDriverName());
         return vo;
     }
 
@@ -229,8 +260,23 @@ public class OrderServiceImpl implements OrderService {
         OrderVO vo = new OrderVO();
         BeanUtils.copyProperties(order, vo);
         vo.setPoiName(order.getDestAddress());  // 【修复】设置 poiName 字段，与创建订单时保持一致
-        log.info("✅ 查询订单详情：orderId={}, poiName={}, destAddress={}", 
-            orderId, vo.getPoiName(), vo.getDestAddress());
+        
+        // ⭐ 如果订单有司机信息，填充到 VO
+        if (order.getDriverName() != null) {
+            vo.setDriverName(order.getDriverName());
+            vo.setDriverPhone(order.getDriverPhone());
+            vo.setCarNo(order.getCarNo());
+            vo.setCarType(order.getCarType());
+            vo.setCarColor(order.getCarColor());
+            vo.setRating(order.getRating() != null ? order.getRating().doubleValue() : null);
+            vo.setDriverLat(order.getDriverLat());
+            vo.setDriverLng(order.getDriverLng());
+            // 头像动态生成
+            vo.setDriverAvatar("https://api.dicebear.com/7.x/avataaars/svg?seed=" + order.getDriverName());
+        }
+        
+        log.info("✅ 查询订单详情：orderId={}, poiName={}, destAddress={}, hasDriver={}", 
+            orderId, vo.getPoiName(), vo.getDestAddress(), vo.getDriverName() != null);
         return vo;
     }
 
@@ -288,11 +334,69 @@ public class OrderServiceImpl implements OrderService {
             OrderVO vo = new OrderVO();
             BeanUtils.copyProperties(order, vo);
             vo.setPoiName(order.getDestAddress());  // ✅ 设置 poiName 字段（前端期望字段）
+            
+            // ⭐ 如果订单有司机信息，填充到 VO
+            if (order.getDriverName() != null) {
+                vo.setDriverName(order.getDriverName());
+                vo.setDriverPhone(order.getDriverPhone());
+                vo.setCarNo(order.getCarNo());
+                vo.setCarType(order.getCarType());
+                vo.setCarColor(order.getCarColor());
+                vo.setRating(order.getRating() != null ? order.getRating().doubleValue() : null);
+                vo.setDriverLat(order.getDriverLat());
+                vo.setDriverLng(order.getDriverLng());
+                vo.setDriverAvatar("https://api.dicebear.com/7.x/avataaars/svg?seed=" + order.getDriverName());
+            }
+            
             return vo;
         }).collect(Collectors.toList());
         voPage.setRecords(voList);
         
         log.info("订单列表转换完成，返回 {} 条记录", voList.size());
         return voPage;
+    }
+    
+    @Override
+    public OrderVO getCurrentOrder(Long userId) {
+        log.info("【亲情守护】查询当前订单，userId: {}", userId);
+        
+        // 查询条件：user_id=userId OR proxy_user_id=userId，且状态为进行中(0/1/2)
+        LambdaQueryWrapper<OrderInfo> wrapper = new LambdaQueryWrapper<OrderInfo>()
+                .and(w -> w.eq(OrderInfo::getUserId, userId)
+                        .or()
+                        .eq(OrderInfo::getProxyUserId, userId))
+                .in(OrderInfo::getStatus, 0, 1, 2)  // 待接单/已接单/行程中
+                .orderByDesc(OrderInfo::getCreateTime)
+                .last("LIMIT 1");
+        
+        OrderInfo order = orderMapper.selectOne(wrapper);
+        if (order == null) {
+            log.info("当前无进行中的订单");
+            return null;
+        }
+        
+        OrderVO vo = new OrderVO();
+        BeanUtils.copyProperties(order, vo);
+        vo.setPoiName(order.getDestAddress());
+        
+        // ⭐ 如果订单有司机信息，填充到 VO
+        if (order.getDriverName() != null) {
+            vo.setDriverName(order.getDriverName());
+            vo.setDriverPhone(order.getDriverPhone());
+            vo.setCarNo(order.getCarNo());
+            vo.setCarType(order.getCarType());
+            vo.setCarColor(order.getCarColor());
+            vo.setRating(order.getRating() != null ? order.getRating().doubleValue() : null);
+            vo.setDriverLat(order.getDriverLat());
+            vo.setDriverLng(order.getDriverLng());
+            vo.setDriverAvatar("https://api.dicebear.com/7.x/avataaars/svg?seed=" + order.getDriverName());
+        }
+        
+        log.info("✅ 查询到当前订单：orderId={}, status={}, isProxy={}, hasDriver={}", 
+            order.getId(), order.getStatus(), 
+            order.getProxyUserId() != null && order.getProxyUserId().equals(userId),
+            vo.getDriverName() != null);
+        
+        return vo;
     }
 }

@@ -85,7 +85,7 @@ public class AmapClient {
         this.restTemplate = createRestTemplate();
         
         // 新增：打印 SSL 配置信息
-        log.info("✅ AmapClient 初始化完成：TLSv1.2 强制启用，HttpClient 连接池优化完成");
+        log.info("✅ AmapClient 初始化完成：TLSv1.2+TLSv1.3 自动协商，HttpClient 连接池优化完成");
     }
     
     /**
@@ -93,15 +93,15 @@ public class AmapClient {
      */
     private RestTemplate createRestTemplate() {
         try {
-            // ========== 关键修复：强制使用 TLSv1.2，解决 SSLHandshakeException ==========
-            // 核心配置：只启用 TLSv1.2，避免 TLSv1.3 兼容性问题
-            javax.net.ssl.SSLContext sslContext = javax.net.ssl.SSLContext.getInstance("TLSv1.2");
+            // ========== 关键修复：支持 TLSv1.2 和 TLSv1.3，解决 handshake_failure ==========
+            // 启用 TLSv1.2 和 TLSv1.3，让客户端自动协商最佳协议
+            javax.net.ssl.SSLContext sslContext = javax.net.ssl.SSLContext.getInstance("TLS");
             sslContext.init(null, null, new java.security.SecureRandom());
             
             org.apache.hc.client5.http.ssl.SSLConnectionSocketFactory sslSocketFactory = 
                 new org.apache.hc.client5.http.ssl.SSLConnectionSocketFactory(
                     sslContext,
-                    new String[]{"TLSv1.2"},  // 只启用 TLSv1.2，90% 的 SSL 问题都因此解决
+                    new String[]{"TLSv1.2", "TLSv1.3"},  // 同时启用 TLSv1.2 和 TLSv1.3，自动协商
                     null,
                     new org.apache.hc.client5.http.ssl.DefaultHostnameVerifier()
                 );
@@ -148,7 +148,7 @@ public class AmapClient {
                 return execution.execute(request, body);
             });
             
-            log.info("✅ RestTemplate 配置完成：TLSv1.2, 连接超时 3s, 读取超时 5s, 最大连接数 50");
+            log.info("✅ RestTemplate 配置完成：TLSv1.2+TLSv1.3, 连接超时 3s, 读取超时 5s, 最大连接数 50");
             return restTemplate;
             
         } catch (Exception e) {

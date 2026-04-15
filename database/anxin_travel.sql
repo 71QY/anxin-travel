@@ -67,8 +67,10 @@ DROP TABLE IF EXISTS `order_info`;
 CREATE TABLE `order_info` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '订单ID',
   `order_no` varchar(32) NOT NULL COMMENT '订单号',
-  `user_id` bigint NOT NULL COMMENT '用户ID',
+  `user_id` bigint NOT NULL COMMENT '用户ID(乘车人)',
   `driver_id` bigint DEFAULT NULL COMMENT '司机ID',
+  `proxy_user_id` bigint DEFAULT NULL COMMENT '代叫车亲友ID',
+  `elder_user_id` bigint DEFAULT NULL COMMENT '实际乘车长辈ID',
   `start_lat` double DEFAULT NULL COMMENT '起点纬度',
   `start_lng` double DEFAULT NULL COMMENT '起点经度',
   `dest_lat` double NOT NULL COMMENT '终点纬度',
@@ -85,6 +87,8 @@ CREATE TABLE `order_info` (
   UNIQUE KEY `order_no` (`order_no`),
   KEY `driver_id` (`driver_id`),
   KEY `idx_user_id` (`user_id`),
+  KEY `idx_proxy` (`proxy_user_id`),
+  KEY `idx_elder` (`elder_user_id`),
   KEY `idx_status_time` (`status`,`create_time`),
   CONSTRAINT `order_info_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`),
   CONSTRAINT `order_info_ibfk_2` FOREIGN KEY (`driver_id`) REFERENCES `driver` (`id`) ON DELETE SET NULL
@@ -119,11 +123,14 @@ CREATE TABLE `user` (
   `real_name` varchar(50) DEFAULT NULL COMMENT '真实姓名',
   `id_card` varchar(18) DEFAULT NULL COMMENT '身份证号',
   `verified` tinyint DEFAULT '0' COMMENT '是否实名认证 0 未认证 1 已认证',
+  `is_guarded` tinyint DEFAULT '0' COMMENT '是否被守护 0否 1是',
+  `guard_mode` tinyint DEFAULT '0' COMMENT '0普通模式 1长辈精简模式',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
   UNIQUE KEY `phone` (`phone`),
-  KEY `idx_phone` (`phone`)
+  KEY `idx_phone` (`phone`),
+  KEY `idx_guard_mode` (`guard_mode`)
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 

@@ -22,4 +22,7 @@ public class User {
     private String realName;
     private String idCard;
     private Integer verified;
+    private Integer isGuarded;  // 是否被守护 0否 1是
+    private Integer guardMode;  // 0普通模式 1长辈精简模式
+    private Integer isCompleted;  // 账号是否完善：0-未完善 1-已完善
 }

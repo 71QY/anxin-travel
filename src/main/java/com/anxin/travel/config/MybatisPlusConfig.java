@@ -30,6 +30,8 @@ public class MybatisPlusConfig {
         public void insertFill(MetaObject metaObject) {
             this.strictInsertFill(metaObject, "createTime", LocalDateTime.class, LocalDateTime.now());
             this.strictInsertFill(metaObject, "updateTime", LocalDateTime.class, LocalDateTime.now());
+            // 私聊消息表使用 createdAt
+            this.strictInsertFill(metaObject, "createdAt", LocalDateTime.class, LocalDateTime.now());
         }
 
         @Override

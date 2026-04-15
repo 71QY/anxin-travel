@@ -221,8 +221,8 @@ public class AgentService {
             
             log.info("✅ 最终意图：type={}, keyword={}", finalType, finalKeyword);
             
-            // ④ 执行意图（使用 finalType 和 finalKeyword）
-            ExecutionResult execResult = executeIntentWithFinalType(sessionId, userId, finalType, finalKeyword, lat, lng);
+            // ④ 执行意图（使用 finalType 和 finalKeyword，同时传递原始 message）
+            ExecutionResult execResult = executeIntentWithFinalType(sessionId, userId, finalType, finalKeyword, message, lat, lng);
             
             // 状态流转：根据结果更新状态
             if (execResult.getPlaces() != null && !execResult.getPlaces().isEmpty()) {
@@ -237,16 +237,41 @@ public class AgentService {
                 log.info("【状态流转】sessionId={}, state=WAIT_CONFIRM (等待用户确认)", sessionId);
                 
                 // 构建搜索成功响应
-                return AgentResponse.successSearch(execResult.getPlaces(), "为你找到以下地点");
+                String searchMessage = buildSearchGuideMessage(execResult.getPlaces());
+                AgentResponse response = AgentResponse.successSearch(execResult.getPlaces(), searchMessage);
+                // 【关键修复】保存AI回复到记忆，支持多轮对话上下文
+                memoryService.saveMessage(sessionId, "assistant", response.getMessage());
+                return response;
             } else if (execResult.getOrderData() != null) {
+                // 【关键修复】检查是否为 CONFIRM 返回的确认数据（Map类型）
+                if (execResult.getOrderData() instanceof Map) {
+                    Map<String, Object> confirmData = (Map<String, Object>) execResult.getOrderData();
+                    String confirmMessage = (String) confirmData.get("message");
+                    
+                    // 保持 WAIT_CONFIRM 状态，等待用户说"下单"
+                    intent.setCurrentState(AgentState.WAIT_CONFIRM);
+                    log.info("【状态流转】sessionId={}, state=WAIT_CONFIRM (等待用户明确下单)", sessionId);
+                    
+                    AgentResponse response = AgentResponse.successChat(confirmMessage);
+                    memoryService.saveMessage(sessionId, "assistant", response.getMessage());
+                    return response;
+                }
+                
+                // 真正的订单数据
                 intent.setCurrentState(AgentState.ORDER_CREATED);
                 log.info("【状态流转】sessionId={}, state=ORDER_CREATED", sessionId);
                 
                 // 构建订单成功响应
-                return AgentResponse.successOrder(execResult.getOrderData(), "订单创建成功");
+                AgentResponse response = AgentResponse.successOrder(execResult.getOrderData(), "订单创建成功");
+                // 【关键修复】保存AI回复到记忆
+                memoryService.saveMessage(sessionId, "assistant", response.getMessage());
+                return response;
             } else {
                 // 聊天响应
-                return AgentResponse.successChat(execResult.getMessage());
+                AgentResponse response = AgentResponse.successChat(execResult.getMessage());
+                // 【关键修复】保存AI回复到记忆（包括CHAT类型）
+                memoryService.saveMessage(sessionId, "assistant", response.getMessage());
+                return response;
             }
             
         } catch (Exception e) {
@@ -442,7 +467,7 @@ public class AgentService {
     /**
      * 统一意图执行入口（使用 finalType 和 finalKeyword）
      */
-    private ExecutionResult executeIntentWithFinalType(String sessionId, Long userId, String finalType, String finalKeyword, Double lat, Double lng) {
+    private ExecutionResult executeIntentWithFinalType(String sessionId, Long userId, String finalType, String finalKeyword, String originalMessage, Double lat, Double lng) {
         
         switch (finalType) {
             case "SEARCH":
@@ -457,13 +482,31 @@ public class AgentService {
                 return new ExecutionResult(places);
                 
             case "ORDER":
+                // 【关键修复】检查是否有待确认的 POI
+                Map<String, Object> pendingConfirm = memoryService.getPendingOrder(sessionId);
+                if (pendingConfirm != null && pendingConfirm.containsKey("selectedPoi")) {
+                    PoiDTO selectedPoi = (PoiDTO) pendingConfirm.get("selectedPoi");
+                    log.info("✅ 检测到待确认订单，直接下单：{}", selectedPoi.getName());
+                    return new ExecutionResult(handleOrder(userId, selectedPoi.getName(), selectedPoi.getLat(), selectedPoi.getLng()));
+                }
+                
+                // 普通 ORDER 意图（用户直接说“帮我叫车去XX”）
                 return new ExecutionResult(handleOrder(userId, finalKeyword, lat, lng));
                 
             case "CONFIRM":
                 return new ExecutionResult(handleConfirm(sessionId, userId, finalKeyword));
                 
+            case "CHAT":
+                // 【关键修复】调用真正的 AI 对话，使用原始消息而非 keyword
+                String chatMessage = (finalKeyword != null && !finalKeyword.trim().isEmpty()) ? finalKeyword : originalMessage;
+                String chatResponse = generateChatResponse(sessionId, chatMessage);
+                return new ExecutionResult(chatResponse != null ? chatResponse : "你好！我可以帮你查找地点、规划路线或叫车出行。请告诉我你的需求~");
+                
             default:
-                return new ExecutionResult("我可以帮你找医院/餐厅/酒店，请告诉我目的地");
+                // 【关键修复】未知类型也走 AI 对话，使用原始消息
+                String fallbackMessage = (finalKeyword != null && !finalKeyword.trim().isEmpty()) ? finalKeyword : originalMessage;
+                String fallbackResponse = generateChatResponse(sessionId, fallbackMessage);
+                return new ExecutionResult(fallbackResponse != null ? fallbackResponse : "我可以帮你找医院/餐厅/酒店，请告诉我目的地");
         }
     }
 
@@ -693,6 +736,67 @@ public class AgentService {
         return String.format("%.3f", score);
     }
     
+    /**
+     * 【图片识别专用】计算 POI 与 OCR 文字的匹配分数
+     * 核心原则：OCR 识别出的地址必须排第一
+     * @param poiName POI 名称
+     * @param poiAddress POI 地址
+     * @param ocrText OCR 识别的文字
+     * @return 匹配分数（越高越匹配）
+     */
+    private int calculateImageMatchScore(String poiName, String poiAddress, String ocrText) {
+        if (poiName == null || ocrText == null || ocrText.isEmpty()) {
+            return 0;
+        }
+        
+        String cleanName = poiName.replaceAll("\\s+", "").toLowerCase();
+        String cleanAddress = poiAddress != null ? poiAddress.replaceAll("\\s+", "").toLowerCase() : "";
+        String cleanOcr = ocrText.replaceAll("\\s+", "").toLowerCase();
+        
+        // 1. 名称完全等于 OCR 文字（最高优先级）
+        if (cleanName.equals(cleanOcr)) {
+            return 1000;
+        }
+        
+        // 2. 名称包含 OCR 文字（OCR 是名称的一部分）
+        if (cleanName.contains(cleanOcr)) {
+            return 800;
+        }
+        
+        // 3. OCR 文字包含名称（名称是 OCR 的简称）
+        if (cleanOcr.contains(cleanName) && cleanName.length() >= 2) {
+            return 700;
+        }
+        
+        // 4. 地址包含 OCR 文字
+        if (cleanAddress.contains(cleanOcr)) {
+            return 600;
+        }
+        
+        // 5. OCR 文字包含地址关键字
+        if (!cleanAddress.isEmpty() && cleanOcr.contains(cleanAddress)) {
+            return 500;
+        }
+        
+        // 6. 名称和地址都包含 OCR 的核心词（2-4 个字）
+        if (cleanOcr.length() >= 2) {
+            String coreWord = cleanOcr.length() > 4 ? cleanOcr.substring(0, 4) : cleanOcr;
+            boolean nameContains = cleanName.contains(coreWord);
+            boolean addrContains = cleanAddress.contains(coreWord);
+            
+            if (nameContains && addrContains) {
+                return 400;
+            } else if (nameContains) {
+                return 300;
+            } else if (addrContains) {
+                return 200;
+            }
+        }
+        
+        // 7. 完全不匹配
+        return 0;
+    }
+
     /**
      * 判断是否为通用类别词（如：医院、酒店、餐厅等）
      */
@@ -1083,7 +1187,26 @@ public class AgentService {
         }
         
         log.info("✅ 用户确认：{} - {}", selected.getName(), selected.getAddress());
-        return handleOrder(userId, selected.getName(), selected.getLat(), selected.getLng());
+        
+        // 【关键修复】不直接下单，而是返回确认信息，等待用户明确说"下单"
+        String confirmMessage = String.format(
+            "已选择 %s，地址：%s\n距离您 %.1f 公里，预计费用 %.0f 元\n\n需要帮您叫车吗？请回复'下单'或'叫车'",
+            selected.getName(),
+            selected.getAddress(),
+            selected.getDistance() / 1000.0,
+            selected.getPrice() != null ? selected.getPrice() : 0.0
+        );
+        
+        // 将确认信息保存到候选 POI 的扩展字段，供后续下单使用
+        Map<String, Object> confirmData = new HashMap<>();
+        confirmData.put("selectedPoi", selected);
+        confirmData.put("message", confirmMessage);
+        
+        // 【关键修复】保存到 Redis，供 ORDER 意图使用
+        memoryService.savePendingOrder(sessionId, confirmData);
+        
+        log.info("⏳ 等待用户确认下单：{}", confirmMessage);
+        return confirmData;
     }
 
     /**
@@ -1247,71 +1370,241 @@ public class AgentService {
      * 处理图片识别请求
      */
     public AgentResponse processImage(String sessionId, Long userId, String imageBase64, Double lat, Double lng) {
+        return processImageInternal(sessionId, userId, java.util.Collections.singletonList(imageBase64), lat, lng, false);
+    }
+    
+    /**
+     * 批量处理多张图片（让 AI 理解图片间的关系）
+     */
+    public AgentResponse processBatchImages(String sessionId, Long userId, List<String> imageBase64List, Double lat, Double lng) {
+        if (imageBase64List == null || imageBase64List.isEmpty()) {
+            return AgentResponse.error("没有图片数据");
+        }
+        return processImageInternal(sessionId, userId, imageBase64List, lat, lng, true);
+    }
+    
+    /**
+     * 内部方法：处理单张或多张图片
+     * @param isBatch 是否为批量模式
+     */
+    private AgentResponse processImageInternal(String sessionId, Long userId, List<String> imageBase64List, Double lat, Double lng, boolean isBatch) {
         try {
-            log.info("【图片识别】sessionId={}, lat={}, lng={}", sessionId, lat, lng);
+            log.info("【图片识别】sessionId={}, 图片数量={}, isBatch={}", sessionId, imageBase64List.size(), isBatch);
             
-            // ① OCR 提取文字
-            String extractedText = imageRecognitionService.extractTextFromImage(imageBase64);
-            log.info("【OCR 结果】{}", extractedText);
+            // ⭐ 批量模式：对所有图片进行 OCR 和描述
+            StringBuilder allOcrText = new StringBuilder();
+            StringBuilder allImageDesc = new StringBuilder();
             
-            // ② 保存识别的文字
-            memoryService.saveMessage(sessionId, "user", "[图片] " + extractedText);
+            for (int i = 0; i < imageBase64List.size(); i++) {
+                String imageBase64 = imageBase64List.get(i);
+                
+                // OCR 提取文字
+                String extractedText = imageRecognitionService.extractTextFromImage(imageBase64);
+                log.info("【OCR 结果 - 图片{}】{}", i + 1, extractedText);
+                
+                // 图片描述
+                String imageDescription = imageRecognitionService.describeImage(imageBase64);
+                log.info("🖼️ 【图片描述 - 图片{}】{}", i + 1, imageDescription);
+                
+                // 拼接所有图片的文本
+                if (i > 0) {
+                    allOcrText.append("\n\n--- 图片" + (i + 1) + " ---\n");
+                    allImageDesc.append("\n\n--- 图片" + (i + 1) + " ---\n");
+                }
+                
+                if (extractedText != null && !extractedText.trim().isEmpty() && !extractedText.contains("未识别到")) {
+                    allOcrText.append(extractedText);
+                }
+                
+                if (imageDescription != null && !imageDescription.equals("一张图片")) {
+                    allImageDesc.append(imageDescription);
+                }
+            }
+            
+            String extractedText = allOcrText.toString();
+            String imageDescription = allImageDesc.toString();
+            
+            log.info("🧠 合并后的 OCR 文本长度：{}", extractedText.length());
+            log.info("🧠 合并后的图片描述长度：{}", imageDescription.length());
+            
+            // ③ 【关键修复】构建完整的图片理解文本（OCR + 图片描述）
+            String fullImageUnderstanding = "";
+            if (extractedText != null && !extractedText.trim().isEmpty() && !extractedText.contains("未识别到")) {
+                fullImageUnderstanding += "图片中的文字：" + extractedText;
+            }
+            if (imageDescription != null && !imageDescription.equals("一张图片")) {
+                if (!fullImageUnderstanding.isEmpty()) {
+                    fullImageUnderstanding += "\n";
+                }
+                fullImageUnderstanding += "图片内容描述：" + imageDescription;
+            }
+            
+            // 如果既没有OCR文字也没有图片描述，给出友好提示
+            if (fullImageUnderstanding.isEmpty()) {
+                fullImageUnderstanding = "用户上传了一张图片，但未能识别出具体内容";
+            }
+            
+            log.info("🧠 完整图片理解：{}", fullImageUnderstanding);
+            
+            // ④ 保存图片理解到记忆（支持后续多轮对话）
+            memoryService.saveMessage(sessionId, "user", "[图片] " + fullImageUnderstanding);
+            log.info("💾 图片已保存到记忆");
             memoryService.saveLocation(sessionId, lat, lng);
             
-            // ③ 调用 AI 解析意图
-            AgentIntent intent = parseIntentWithAI(extractedText);
-            if (intent == null || intent.getType() == null) {
-                intent = fallbackIntent(extractedText);
+            // ⑤ 【关键修复】判断是否为地址类图片
+            boolean isAddressImage = false;
+            
+            if (extractedText != null && !extractedText.trim().isEmpty() && !extractedText.contains("未识别到")) {
+                // 1. 包含明确的地址关键词
+                boolean hasAddressKeyword = extractedText.contains("路") || extractedText.contains("街") 
+                    || extractedText.contains("号") || extractedText.contains("市")
+                    || extractedText.contains("区") || extractedText.contains("省")
+                    || extractedText.contains("县") || extractedText.contains("镇")
+                    || extractedText.contains("村") || extractedText.contains("乡")
+                    || extractedText.contains("道") || extractedText.contains("巷");
+                
+                // 2. 或者 AI 意图识别为 SEARCH（知名地标、POI名称等）
+                AgentIntent tempIntent = parseIntentWithAI(extractedText);
+                boolean isSearchIntent = tempIntent != null && "SEARCH".equals(tempIntent.getType());
+                
+                isAddressImage = hasAddressKeyword || isSearchIntent;
+                
+                log.info("🔍 地址类图片判断：hasAddressKeyword={}, isSearchIntent={}, isAddressImage={}", 
+                    hasAddressKeyword, isSearchIntent, isAddressImage);
             }
             
-            intent.setSessionId(sessionId);
-            intent.setLat(lat);
-            intent.setLng(lng);
-            intent.setCurrentState(AgentState.INTENT_RECOGNIZED);
+            AgentResponse response;
             
-            // ④ 执行意图
-            ExecutionResult execResult = executeIntent(sessionId, userId, intent, lat, lng);
-            
-            // 【关键修复】如果找到候选地点，保存到内存（供后续 confirmSelection 使用）
-            if (execResult.getPlaces() != null && !execResult.getPlaces().isEmpty()) {
-                memoryService.saveCandidates(sessionId, execResult.getPlaces());
-                log.info("💾 图片识别后保存候选 POI：sessionId={}, size={}", sessionId, execResult.getPlaces().size());
+            if (isAddressImage) {
+                // 地址类图片：执行搜索逻辑
+                log.info("📍 检测到地址类图片，执行搜索...");
+                
+                // 调用 AI 解析意图
+                AgentIntent intent = parseIntentWithAI(extractedText);
+                if (intent == null || intent.getType() == null) {
+                    intent = fallbackIntent(extractedText);
+                }
+                
+                intent.setSessionId(sessionId);
+                intent.setLat(lat);
+                intent.setLng(lng);
+                intent.setCurrentState(AgentState.INTENT_RECOGNIZED);
+                
+                // 执行意图
+                ExecutionResult execResult = executeIntent(sessionId, userId, intent, lat, lng);
+                
+                // 【关键修复】图片识别场景：将OCR识别的文字作为最高优先级
+                if (execResult.getPlaces() != null && !execResult.getPlaces().isEmpty()) {
+                    List<PoiDTO> places = execResult.getPlaces();
+                    String ocrKeyword = extractedText.trim();
+                    
+                    log.info("🎯 图片识别排序优化：OCR关键词='{}', 原始结果数={}", ocrKeyword, places.size());
+                    
+                    // 重新排序
+                    places.sort((p1, p2) -> {
+                        String name1 = p1.getName() != null ? p1.getName() : "";
+                        String name2 = p2.getName() != null ? p2.getName() : "";
+                        String addr1 = p1.getAddress() != null ? p1.getAddress() : "";
+                        String addr2 = p2.getAddress() != null ? p2.getAddress() : "";
+                        
+                        int score1 = calculateImageMatchScore(name1, addr1, ocrKeyword);
+                        int score2 = calculateImageMatchScore(name2, addr2, ocrKeyword);
+                        
+                        return Integer.compare(score2, score1);
+                    });
+                    
+                    log.info("✅ 图片识别排序完成，前3个结果：");
+                    for (int i = 0; i < Math.min(3, places.size()); i++) {
+                        PoiDTO poi = places.get(i);
+                        int score = calculateImageMatchScore(
+                            poi.getName() != null ? poi.getName() : "", 
+                            poi.getAddress() != null ? poi.getAddress() : "",
+                            ocrKeyword
+                        );
+                        log.info("  #{}: {} - 匹配分={}", i + 1, poi.getName(), score);
+                    }
+                }
+                
+                // 保存候选 POI
+                if (execResult.getPlaces() != null && !execResult.getPlaces().isEmpty()) {
+                    memoryService.saveCandidates(sessionId, execResult.getPlaces());
+                    log.info("💾 保存候选 POI：sessionId={}, size={}", sessionId, execResult.getPlaces().size());
+                }
+                
+                // 构建响应
+                response = new AgentResponse();
+                response.setType("IMAGE_RESULT");
+                response.setSuccess(true);
+                response.setMessage("图片识别成功");
+                
+                Map<String, Object> data = new HashMap<>();
+                data.put("ocrText", extractedText);
+                
+                if (execResult.getPlaces() != null && !execResult.getPlaces().isEmpty()) {
+                    data.put("places", execResult.getPlaces());
+                    response.setPlaces(execResult.getPlaces());
+                    log.info("✅ 找到 {} 个地点", execResult.getPlaces().size());
+                } else if (execResult.getOrderData() != null) {
+                    data.put("order", execResult.getOrderData());
+                } else {
+                    data.put("message", execResult.getMessage() != null ? execResult.getMessage() : "未找到相关地点");
+                }
+                
+                response.setData(data);
+                
+            } else {
+                // 非地址类图片：像豆包一样直接描述图片内容
+                log.info("🖼️ 检测到非地址类图片，生成自然回复...");
+                
+                // 【关键修复】处理 imageDescription 为 null 的情况
+                String safeImageDesc = (imageDescription != null && !imageDescription.equals("一张图片")) 
+                    ? imageDescription 
+                    : "这是一张图片";
+                
+                // ⭐ 批量模式：让 AI 理解多张图片的关系
+                String chatMessage;
+                if (isBatch) {
+                    chatMessage = "我看到了" + imageBase64List.size() + "张图片：\n" + safeImageDesc;
+                } else {
+                    chatMessage = "我看到这张图片：" + safeImageDesc;
+                }
+                
+                String aiResponse = generateChatResponse(sessionId, chatMessage);
+                
+                // 如果AI回复为空，使用默认回复
+                if (aiResponse == null || aiResponse.trim().isEmpty()) {
+                    aiResponse = "我看到了这张图片。" + safeImageDesc;
+                }
+                
+                response = new AgentResponse();
+                response.setType("IMAGE_RESULT");
+                response.setSuccess(true);
+                response.setMessage(aiResponse);
+                
+                Map<String, Object> data = new HashMap<>();
+                data.put("ocrText", extractedText != null ? extractedText : "");
+                data.put("imageDescription", imageDescription != null ? imageDescription : "");
+                data.put("message", aiResponse);
+                // ⭐ 批量模式：添加图片数量
+                if (isBatch) {
+                    data.put("imageCount", imageBase64List.size());
+                }
+                response.setData(data);
+                
+                log.info("✅ 生成图片描述回复：{}", aiResponse);
             }
             
-            // ⑤ 构建响应（严格按前端文档格式）
-            AgentResponse response = new AgentResponse();
-            response.setType("IMAGE_RECOGNITION");  // 明确标识为图片识别
-            response.setSuccess(true);
-            response.setMessage("图片识别成功");
+            // 【关键修复】保存AI回复到记忆，支持多轮对话上下文
+            memoryService.saveMessage(sessionId, "assistant", response.getMessage());
+            log.info("💾 AI回复已保存到记忆：sessionId={}, message={}", sessionId, response.getMessage());
             
-            // 构建 data 对象，包含所有前端需要的字段
-            Map<String, Object> data = new HashMap<>();
-            data.put("ocrText", extractedText != null ? extractedText : "");  // OCR 识别的文字
-            
-            // 如果有搜索结果，添加 places 数组
-            if (execResult.getPlaces() != null && !execResult.getPlaces().isEmpty()) {
-                data.put("places", execResult.getPlaces());
-                response.setPlaces(execResult.getPlaces());  // 同时设置到顶层字段
-                log.info("✅ 图片识别后找到 {} 个地点", execResult.getPlaces().size());
-            } 
-            // 如果直接下单成功，添加 order 对象
-            else if (execResult.getOrderData() != null) {
-                data.put("order", execResult.getOrderData());
-                log.info("✅ 图片识别后直接创建订单");
-            } 
-            // 其他情况，添加 message
-            else {
-                data.put("message", execResult.getMessage() != null ? execResult.getMessage() : "未找到相关地点");
-            }
-            
-            response.setData(data);  // 将完整数据放入 data 字段
             return response;
             
         } catch (Exception e) {
             log.error("图片识别失败", e);
             // 返回错误响应，包含详细错误信息
             AgentResponse errorResponse = new AgentResponse();
-            errorResponse.setType("IMAGE_RECOGNITION");
+            errorResponse.setType("IMAGE_RESULT");
             errorResponse.setSuccess(false);
             errorResponse.setMessage("图片识别失败：" + e.getMessage());
             errorResponse.setError(e.getMessage());
@@ -1320,6 +1613,9 @@ public class AgentService {
             errorData.put("ocrText", "");
             errorData.put("message", "识别失败：" + e.getMessage());
             errorResponse.setData(errorData);
+            
+            // 【关键修复】保存错误信息到记忆
+            memoryService.saveMessage(sessionId, "assistant", errorResponse.getMessage());
             
             return errorResponse;
         }
@@ -1524,5 +1820,201 @@ public class AgentService {
         log.info("✅ POI 过滤完成：{} -> {} (精简过滤模式)", poiList.size(), filtered.size());
     
         return filtered;
+    }
+    
+    /**
+     * 【关键新增】构建搜索引导消息（主动引导用户下一步操作）
+     * @param places POI 列表
+     * @return 包含引导信息的消息文本
+     */
+    private String buildSearchGuideMessage(List<PoiDTO> places) {
+        if (places == null || places.isEmpty()) {
+            return "抱歉，未找到相关地点";
+        }
+        
+        StringBuilder sb = new StringBuilder();
+        sb.append("为你找到以下地点：\n\n");
+        
+        // 显示前 3 个地点
+        int showCount = Math.min(3, places.size());
+        for (int i = 0; i < showCount; i++) {
+            PoiDTO poi = places.get(i);
+            double distanceKm = poi.getDistance() / 1000.0;
+            Double price = poi.getPrice();
+            
+            sb.append(String.format("%d. %s\n", i + 1, poi.getName()));
+            sb.append(String.format("   距离：%.1f 公里", distanceKm));
+            if (price != null && price > 0) {
+                sb.append(String.format("，预计费用：%.0f 元", price));
+            }
+            sb.append("\n");
+        }
+        
+        if (places.size() > 3) {
+            sb.append(String.format("\n还有 %d 个地点...\n", places.size() - 3));
+        }
+        
+        // 【关键】主动引导用户下一步操作
+        sb.append("\n您可以：\n");
+        sb.append("• 回复'第一个'/'第二个'选择地点\n");
+        sb.append("• 或直接说'帮我叫车'下单\n");
+        sb.append("• 也可以说'换一个'重新搜索");
+        
+        return sb.toString();
+    }
+    
+    /**
+     * 【关键新增】生成真正的 AI 对话回复（用于 CHAT 类型）
+     * @param sessionId 会话 ID
+     * @param userMessage 用户消息
+     * @return AI 生成的自然语言回复
+     */
+    private String generateChatResponse(String sessionId, String userMessage) {
+        try {
+            // 【关键修复】防止 userMessage 为 null
+            if (userMessage == null || userMessage.trim().isEmpty()) {
+                log.warn("⚠️ userMessage 为空，使用默认问候语");
+                return "你好！我是小安，你的智能出行助手。我可以帮你查找地点、规划路线或叫车出行。有什么可以帮你的吗？";
+            }
+            
+            // 【新增】检查是否为位置查询
+            if (isLocationQuery(userMessage)) {
+                log.info("📍 检测到位置查询：{}", userMessage);
+                return handleLocationQuery(sessionId, userMessage);
+            }
+            
+            // 1. 获取历史消息（最多 10 条）
+            List<com.anxin.travel.agent.model.ChatMessage> history = memoryService.getMessages(sessionId);
+            
+            // 2. 构建完整的消息列表（system + history + current）
+            com.alibaba.fastjson.JSONArray messages = new com.alibaba.fastjson.JSONArray();
+            
+            // System Prompt - 定义 AI 助手角色（像豆包那样的自然对话 + 事实准确）
+            com.alibaba.fastjson.JSONObject systemMsg = new com.alibaba.fastjson.JSONObject();
+            systemMsg.put("role", "system");
+            systemMsg.put("content", 
+                "你是一个智能助手，名叫'小安'。你既是一个专业的出行助手，也是一个友好的聊天伙伴。\n\n" +
+                "【核心能力】\n" +
+                "1. **出行服务**：查找地点、规划路线、预估价格、叫车下单（这是你的强项，可以调用工具获取真实数据）\n" +
+                "2. **日常聊天**：进行自然对话，分享观点和建议\n" +
+                "3. **知识问答**：回答常见问题，但要注意事实准确性\n\n" +
+                "【对话风格】\n" +
+                "- 保持友好、自然、亲切的语气，像朋友一样交流\n" +
+                "- 回复要生动有趣，避免机械化的固定话术\n" +
+                "- 根据用户情绪调整语气（开心时活泼，难过时安慰）\n" +
+                "- 适当使用表情符号增加亲和力（如 😊 👍 🚗）\n" +
+                "- 回复长度灵活控制，简单问题简短回答，复杂问题详细说明\n" +
+                "- **不要过度冗长**，保持简洁但有温度\n\n" +
+                "【重要原则 - 事实准确性】\n" +
+                "- **严禁编造不确定的信息**！如果不知道确切答案，诚实说明\n" +
+                "- **对于实时数据**（如天气、新闻、股价等），由于你无法访问实时信息，请采取以下策略：\n" +
+                "  * 天气问题：提供季节性建议和出行提示，例如'现在这个季节通常比较温暖/凉爽，出门可以带件外套哦～如果要获取精确预报，建议查看天气APP'\n" +
+                "  * 新闻问题：礼貌说明无法获取最新新闻，但可以聊聊相关话题\n" +
+                "  * 其他实时数据：诚实说明限制，但尽量提供有用的替代建议\n" +
+                "- 对于常识性问题（如历史、科学、文化），可以基于训练数据自信回答\n" +
+                "- **保持自然对话**，避免机械化的固定话术，像朋友一样交流\n" +
+                "- 在不确定时，可以提供一般性建议或引导用户查询可靠来源\n\n" +
+                "【出行服务优先】\n" +
+                "- 当用户提到地点、路线、打车等需求时，优先提供准确的出行服务\n" +
+                "- 可以主动询问细节以确保提供正确帮助（如'你想去哪个地方的医院呢？'）\n" +
+                "- 在聊天中自然引导到出行服务，但不要强行推销\n\n" +
+                "【示例对话】\n" +
+                "用户：你好\n助手：你好呀！😊 我是小安，很高兴认识你！今天有什么我可以帮你的吗？\n\n" +
+                "用户：今天天气怎么样\n助手：现在是春季，天气通常比较舒适温暖呢～ ☀️ 不过具体预报可能会有变化，建议你查看天气APP获取最准确的信息。如果要出门游玩或办事，我可以帮你规划路线或者叫车哦！\n\n" +
+                "用户：我想去北京大学\n助手：好的！我来帮你找一下北京大学的地点。🚗\n\n" +
+                "用户：谢谢\n助手：不客气～ 😊 随时为你服务！还有其他需要帮忙的吗？\n\n" +
+                "用户：你今天过得怎么样\n助手：谢谢关心！我今天状态很好，随时准备帮助你呢～ 你今天过得如何呀？\n\n" +
+                "用户：最近有什么新闻\n助手：抱歉，我无法获取最新的实时新闻呢～ 不过如果你对某个话题感兴趣，我们可以聊聊！或者如果你要出行，我可以帮你查找地点和规划路线哦～"
+            );
+            messages.add(systemMsg);
+            
+            // 添加历史消息（最多 10 条）
+            if (history != null && !history.isEmpty()) {
+                int startIdx = Math.max(0, history.size() - 10);
+                for (int i = startIdx; i < history.size(); i++) {
+                    com.anxin.travel.agent.model.ChatMessage msg = history.get(i);
+                    com.alibaba.fastjson.JSONObject jsonMsg = new com.alibaba.fastjson.JSONObject();
+                    jsonMsg.put("role", "user".equals(msg.getRole()) ? "user" : "assistant");
+                    jsonMsg.put("content", msg.getContent());
+                    messages.add(jsonMsg);
+                }
+                log.info("✅ 已添加 {} 条历史消息到对话上下文", history.size() - startIdx);
+            }
+            
+            // 添加当前用户消息
+            com.alibaba.fastjson.JSONObject currentMsg = new com.alibaba.fastjson.JSONObject();
+            currentMsg.put("role", "user");
+            currentMsg.put("content", userMessage);
+            messages.add(currentMsg);
+            
+            log.info("🤖 调用 AI 对话生成：sessionId={}, messageCount={}", sessionId, messages.size());
+            
+            // 3. 调用通义千问 API 生成回复
+            String aiResponse = tongyiClient.chatCompletion(messages);
+            
+            if (aiResponse != null && !aiResponse.trim().isEmpty()) {
+                log.info("✅ AI 对话生成成功：回复长度={}", aiResponse.length());
+                return aiResponse.trim();
+            } else {
+                log.warn("⚠️ AI 返回空回复，使用默认回复");
+                return "你好！我是小安，你的智能出行助手。我可以帮你查找地点、规划路线或叫车出行。有什么可以帮你的吗？";
+            }
+            
+        } catch (Exception e) {
+            log.error("❌ AI 对话生成失败", e);
+            // Fallback：返回友好的默认回复
+            return "抱款，我暂时遇到了一些问题。你可以尝试告诉我你想去哪里，我会帮你查找地点并规划路线。";
+        }
+    }
+    
+    /**
+     * 判断是否为位置查询
+     */
+    private boolean isLocationQuery(String message) {
+        if (message == null || message.trim().isEmpty()) {
+            return false;
+        }
+        
+        String msg = message.toLowerCase();
+        return msg.contains("我在哪里") || msg.contains("我现在在哪里") || 
+               msg.contains("我的位置") || msg.contains("我现在在哪") ||
+               msg.contains("位置信息") || msg.contains("当前定位");
+    }
+    
+    /**
+     * 处理位置查询（调用逆地理编码 API）
+     */
+    private String handleLocationQuery(String sessionId, String userMessage) {
+        try {
+            // 1. 从缓存获取用户位置
+            double[] location = memoryService.getLocation(sessionId);
+                
+            if (location == null || location.length != 2) {
+                log.warn("⚠️ 无法获取用户位置，sessionId={}", sessionId);
+                return "抱款，我还没有收到您的位置信息呢～ 请允许应用获取您的定位，或者在地图上点击选择当前位置。";
+            }
+                
+            double lat = location[0];
+            double lng = location[1];
+            log.info("📍 开始逆地理编码：lat={}, lng={}", lat, lng);
+                
+            // 2. 调用高德地图逆地理编码 API
+            com.anxin.travel.module.map.dto.ReverseGeocodeResponse geocodeResult = amapClient.reverseGeocode(lat, lng);
+                
+            if (geocodeResult == null || geocodeResult.getAddress() == null || geocodeResult.getAddress().trim().isEmpty()) {
+                log.error("❌ 逆地理编码失败");
+                return "抱款，暂时无法解析您的位置信息，请稍后再试。";
+            }
+                
+            String address = geocodeResult.getAddress();
+            log.info("✅ 逆地理编码成功：{}", address);
+                
+            // 3. 生成友好回复
+            return String.format("您现在位于%s附近。需要我帮您查找周边的医院、餐厅或其他地点吗？😊", address);
+                
+        } catch (Exception e) {
+            log.error("❌ 处理位置查询失败", e);
+            return "抱款，获取位置信息时遇到了问题，请稍后再试。";
+        }
     }
 }

@@ -12,6 +12,8 @@ import jakarta.websocket.server.ServerEndpoint;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -22,14 +24,16 @@ public class NativeWebSocket {
     
     private static final Map<String, Session> sessions = new ConcurrentHashMap<>();
     private static final Map<Session, Long> authenticatedUsers = new ConcurrentHashMap<>();
+    // ⭐ 记录每个用户的最新 sessionId，用于防止重复连接
+    private static final Map<Long, String> userLatestSession = new ConcurrentHashMap<>();
 
     @OnOpen
     public void onOpen(Session session) {
-        log.info("WebSocket 连接打开，sessionId: {}", session.getId());
+        log.debug("WebSocket 连接打开，sessionId: {}", session.getId());
         
         try {
             String token = extractTokenFromSession(session);
-            log.info("Token: {}", token != null ? token.substring(0, 20) + "..." : "null");
+            log.debug("Token: {}", token != null ? token.substring(0, 20) + "..." : "null");
             
             JwtUtil jwtUtil = SpringContextUtil.getBean(JwtUtil.class);
             boolean valid = jwtUtil.validateToken(token);
@@ -47,14 +51,38 @@ public class NativeWebSocket {
             }
             
             Long userId = jwtUtil.getUserIdFromToken(token);
+            
+            // ⭐ 检查该用户是否已有活跃连接，如果有则拒绝新连接
+            String latestSessionId = userLatestSession.get(userId);
+            if (latestSessionId != null && !latestSessionId.equals(session.getId())) {
+                log.warn("⚠️ 用户{}已有活跃连接（sessionId={}），拒绝新连接：sessionId={}", 
+                    userId, latestSessionId, session.getId());
+                JSONObject rejectMsg = new JSONObject();
+                rejectMsg.put("type", "rejected");
+                rejectMsg.put("success", false);
+                rejectMsg.put("message", "检测到重复连接，请关闭其他窗口");
+                rejectMsg.put("code", 409);
+                rejectMsg.put("timestamp", System.currentTimeMillis());
+                session.getBasicRemote().sendText(rejectMsg.toJSONString());
+                session.close();
+                return;
+            }
+            
+            // 记录最新 sessionId
+            userLatestSession.put(userId, session.getId());
             authenticatedUsers.put(session, userId);
             sessions.put(session.getId(), session);
             
-            log.info("WebSocket 认证成功，userId: {}", userId);
+            log.debug("WebSocket 认证成功，userId: {}", userId);
             
+            // 发送欢迎消息
             JSONObject welcomeMsg = new JSONObject();
+            welcomeMsg.put("type", "connected");
+            welcomeMsg.put("success", true);
             welcomeMsg.put("message", "欢迎使用智能出行助手！");
+            welcomeMsg.put("timestamp", System.currentTimeMillis());
             session.getBasicRemote().sendText(welcomeMsg.toJSONString());
+            log.info("✅ 已发送欢迎消息：userId={}, sessionId={}", userId, session.getId());
             
         } catch (Exception e) {
             log.error("WebSocket 握手失败", e);
@@ -108,37 +136,19 @@ public class NativeWebSocket {
                 return;
             }
             
-            // 【自动定位】如果前端没有传递坐标，尝试从缓存获取或 IP 定位
-            if ((lat == null || lng == null) && !"ping".equals(type)) {
-                log.warn("⚠️ 前端未传递坐标，尝试自动获取用户位置...");
-                double[] cachedLocation = SpringContextUtil.getBean(MemoryService.class).getLocation(clientSessionId);
-                if (cachedLocation != null) {
-                    lat = cachedLocation[0];
-                    lng = cachedLocation[1];
-                    log.info("✅ 从缓存获取位置：lat={}, lng={}", lat, lng);
-                } else {
-                    // 调用 IP 定位（需要注入 AgentService）
-                    try {
-                        AgentService tempAgentService = SpringContextUtil.getBean(AgentService.class);
-                        // 使用反射调用私有方法 getIpLocation
-                        java.lang.reflect.Method method = AgentService.class.getDeclaredMethod("getIpLocation");
-                        method.setAccessible(true);
-                        double[] ipLocation = (double[]) method.invoke(tempAgentService);
-                        if (ipLocation != null) {
-                            lat = ipLocation[0];
-                            lng = ipLocation[1];
-                            log.info("✅ IP 定位成功：lat={}, lng={}", lat, lng);
-                            // 缓存位置
-                            SpringContextUtil.getBean(MemoryService.class).saveLocation(clientSessionId, lat, lng);
-                        } else {
-                            log.warn("⚠️ IP 定位失败，本次请求将缺少位置信息");
-                        }
-                    } catch (Exception e) {
-                        log.debug("IP 定位异常：{}", e.getMessage());
-                    }
+            // 【性能优化】心跳消息最早期返回，避免任何不必要的处理
+            if ("ping".equals(type)) {
+                log.debug("💓 收到心跳：sessionId={}", clientSessionId);
+                JSONObject pongResponse = new JSONObject();
+                pongResponse.put("type", "pong");
+                pongResponse.put("sessionId", clientSessionId);
+                pongResponse.put("timestamp", System.currentTimeMillis());
+                if (session.isOpen()) {
+                    session.getBasicRemote().sendText(pongResponse.toJSONString());
                 }
+                return;  // 立即返回，不执行后续任何逻辑
             }
-
+            
             log.info("收到消息：sessionId={}, userId={}, type={}, hasImage={}, dialect={}, lat={}, lng={}", 
                     clientSessionId, userId, type, imageBase64 != null, dialectType, lat, lng);
             
@@ -158,20 +168,37 @@ public class NativeWebSocket {
                 }
             }
             
-            // 根据消息类型分发
-            if ("ping".equals(type)) {
-                // 心跳消息，直接返回 pong
-                JSONObject pongResponse = new JSONObject();
-                pongResponse.put("type", "pong");
-                pongResponse.put("sessionId", clientSessionId);
-                pongResponse.put("timestamp", System.currentTimeMillis());
-                if (session.isOpen()) {
-                    session.getBasicRemote().sendText(pongResponse.toJSONString());
+            // 根据消息类型分发（ping已在上面处理并返回）
+            if ("image".equals(type) && imageBase64 != null && !imageBase64.isEmpty()) {
+                // ⭐ 图片识别（支持批量）
+                com.alibaba.fastjson.JSONArray additionalImages = json.getJSONArray("additionalImages");
+                Integer imageCount = json.getInteger("imageCount");
+                
+                // 收集所有图片
+                java.util.List<String> allImages = new java.util.ArrayList<>();
+                allImages.add(imageBase64);  // 添加主图
+                
+                if (additionalImages != null && !additionalImages.isEmpty()) {
+                    for (int i = 0; i < additionalImages.size(); i++) {
+                        String img = additionalImages.getString(i);
+                        if (img != null && !img.isEmpty()) {
+                            allImages.add(img);
+                        }
+                    }
                 }
-                return;  // 直接返回，不执行后续处理
-            } else if ("image".equals(type) && imageBase64 != null && !imageBase64.isEmpty()) {
-                // 图片识别
-                result = agentService.processImage(clientSessionId, userId, imageBase64, lat, lng);
+                
+                log.info("🖼️ 收到图片消息：sessionId={}, 图片数量={}, imageCount={}", 
+                    clientSessionId, allImages.size(), imageCount);
+                
+                // ⭐ 批量图片统一处理（让 AI 理解多张图片的关系）
+                if (allImages.size() == 1) {
+                    // 单张图片，使用原有逻辑
+                    result = agentService.processImage(clientSessionId, userId, allImages.get(0), lat, lng);
+                } else {
+                    // 多张图片，批量处理
+                    result = agentService.processBatchImages(clientSessionId, userId, allImages, lat, lng);
+                }
+                
             } else if ("confirm".equals(type)) {
                 // 用户确认选择（传递位置信息）
                 result = agentService.confirmSelection(clientSessionId, userId, processedContent, lat, lng);
@@ -195,7 +222,14 @@ public class NativeWebSocket {
             JSONObject response = buildStandardResponse(result, clientSessionId, type);
             
             if (response != null && session.isOpen()) {
-                session.getBasicRemote().sendText(response.toJSONString());
+                String responseJson = response.toJSONString();
+                log.info("✅ WebSocket 发送响应：sessionId={}, type={}, length={}", 
+                    clientSessionId, response.getString("type"), responseJson.length());
+                log.debug("响应内容：{}", responseJson);
+                session.getBasicRemote().sendText(responseJson);
+            } else {
+                log.warn("⚠️ WebSocket 未发送响应：response={}, sessionOpen={}", 
+                    response != null, session.isOpen());
             }
 
         } catch (Exception e) {
@@ -213,6 +247,16 @@ public class NativeWebSocket {
     @OnClose
     public void onClose(Session session, CloseReason closeReason) {
         String sessionId = session.getId();
+        Long userId = authenticatedUsers.get(session);
+        
+        // ⭐ 清理 userLatestSession（只有当关闭的是最新连接时才清理）
+        if (userId != null) {
+            String latestSessionId = userLatestSession.get(userId);
+            if (sessionId.equals(latestSessionId)) {
+                userLatestSession.remove(userId);
+                log.info("🔓 用户{}的最新连接已关闭：sessionId={}", userId, sessionId);
+            }
+        }
         
         // 安全移除会话数据（避免重复移除）
         sessions.remove(sessionId);
@@ -224,24 +268,27 @@ public class NativeWebSocket {
                 agentService.cleanupSession(sessionId);
             }
         } catch (Exception e) {
-            log.warn("清理会话失败：{}", e.getMessage());
+            log.debug("清理会话失败：{}", e.getMessage());
         }
         
         String reason = closeReason != null ? 
             closeReason.getReasonPhrase() + " (Code: " + closeReason.getCloseCode() + ")" : 
             "客户端主动断开";
-        log.info("WebSocket 连接关闭，sessionId: {}, 原因：{}", sessionId, reason);
+        log.debug("WebSocket 连接关闭，sessionId: {}, 原因：{}", sessionId, reason);
     }
 
     @OnError
     public void onError(Session session, Throwable error) {
         // 忽略常见的网络异常（这些是正常的连接断开）
         if (error instanceof java.io.EOFException || 
+            error instanceof java.net.SocketException ||
             (error instanceof java.io.IOException && error.getMessage() != null && 
              (error.getMessage().contains("远程主机") || 
               error.getMessage().contains("existing connection") ||
-              error.getMessage().contains("connection reset")))) {
-            log.debug("WebSocket 网络异常（通常是客户端突然关闭）: sessionId: {}", session.getId());
+              error.getMessage().toLowerCase().contains("connection reset") ||
+              error.getMessage().toLowerCase().contains("broken pipe")))) {
+            log.debug("WebSocket 网络异常（通常是客户端突然关闭）: sessionId: {}, 错误: {}", 
+                session.getId(), error.getMessage());
         } else {
             // 其他错误才记录详细日志
             log.error("WebSocket 错误，sessionId: {}, 错误类型：{}, 错误信息：{}", 
@@ -278,7 +325,7 @@ public class NativeWebSocket {
             response.put("message", agentResponse.getMessage() != null ? agentResponse.getMessage() : "");
             
             // 根据类型构建不同的响应结构
-            if ("image_recognition".equals(responseType)) {
+            if ("image_result".equals(responseType)) {
                 // ✅ 图片识别响应：包含 ocrText、places/order/message
                 response.put("data", agentResponse.getData());
                 
@@ -370,5 +417,32 @@ public class NativeWebSocket {
             log.error("解析 URL 参数失败", e);
         }
         return null;
+    }
+    
+    /**
+     * 【亲情守护】向指定用户推送WebSocket消息
+     * @param userId 用户ID
+     * @param message 消息内容（JSON字符串）
+     */
+    public void sendMessageToUser(Long userId, String message) {
+        if (userId == null || message == null) {
+            log.warn("⚠️ 推送消息失败：userId或message为null");
+            return;
+        }
+        
+        // 查找该用户的所有会话
+        for (Map.Entry<Session, Long> entry : authenticatedUsers.entrySet()) {
+            if (userId.equals(entry.getValue())) {
+                Session session = entry.getKey();
+                if (session != null && session.isOpen()) {
+                    try {
+                        session.getBasicRemote().sendText(message);
+                        log.info("✅ WebSocket推送成功：userId={}, messageLength={}", userId, message.length());
+                    } catch (Exception e) {
+                        log.error("❌ WebSocket推送失败：userId={}", userId, e);
+                    }
+                }
+            }
+        }
     }
 }
