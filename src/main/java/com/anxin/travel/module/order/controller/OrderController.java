@@ -6,10 +6,13 @@ import com.anxin.travel.common.util.UserContext;
 import com.anxin.travel.module.order.dto.CreateOrderRequest;
 import com.anxin.travel.module.order.dto.OrderVO;
 import com.anxin.travel.module.order.service.OrderService;
+import com.anxin.travel.module.order.service.DriverAssignmentService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @Slf4j
 @RestController
@@ -18,6 +21,7 @@ import org.springframework.web.bind.annotation.*;
 public class OrderController {
 
     private final OrderService orderService;
+    private final DriverAssignmentService driverAssignmentService;
 
     @PostMapping("/create")
     public Result<OrderVO> createOrder(@RequestBody CreateOrderRequest request) {
@@ -80,5 +84,19 @@ public class OrderController {
         log.info("【亲情守护】查询当前订单，userId: {}", userId);
         OrderVO order = orderService.getCurrentOrder(userId);
         return Result.success(order);
+    }
+    
+    /**
+     * 用户确认/拒绝司机接单
+     */
+    @PostMapping("/driver/confirm")
+    public Result<Void> confirmDriver(@RequestBody Map<String, Object> request) {
+        Long userId = UserContext.getUserId();
+        Long orderId = Long.valueOf(request.get("orderId").toString());
+        Boolean accepted = (Boolean) request.get("accepted");
+        
+        log.info("用户{}确认司机接单，orderId={}, accepted={}", userId, orderId, accepted);
+        driverAssignmentService.confirmDriverAcceptance(orderId, userId, accepted);
+        return Result.success();
     }
 }

@@ -254,7 +254,9 @@ public class OrderServiceImpl implements OrderService {
         if (order == null) {
             throw new RuntimeException("订单不存在");
         }
-        if (!order.getUserId().equals(userId)) {
+        // ⭐ 修复：允许乘车人(userId)或代叫人(proxyUserId)查询订单
+        if (!order.getUserId().equals(userId) && 
+            (order.getProxyUserId() == null || !order.getProxyUserId().equals(userId))) {
             throw new RuntimeException("无权查看他人订单");
         }
         OrderVO vo = new OrderVO();

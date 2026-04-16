@@ -674,14 +674,22 @@ public class FamilyGuardServiceImpl implements FamilyGuardService {
             
             result.put("status", "CONFIRMED");
             
-            // ⭐ 通知代叫人（亲友）
+            // ⭐ 构建通知消息
             Map<String, Object> notifyData = new HashMap<>();
             notifyData.put("type", "PROXY_ORDER_CONFIRMED");
             notifyData.put("orderId", orderId);
             notifyData.put("elderUserId", elderId);
             notifyData.put("confirmed", true);
             notifyData.put("confirmTime", LocalDateTime.now().toString());
-            nativeWebSocket.sendMessageToUser(order.getProxyUserId(), com.alibaba.fastjson.JSON.toJSONString(notifyData));
+            String messageJson = com.alibaba.fastjson.JSON.toJSONString(notifyData);
+            
+            // ⭐ 通知代叫人（亲友）
+            nativeWebSocket.sendMessageToUser(order.getProxyUserId(), messageJson);
+            log.info("✅ 已向代叫人 proxyUserId={} 推送 PROXY_ORDER_CONFIRMED (同意)", order.getProxyUserId());
+            
+            // ⭐ 也通知长辈自己（确认成功反馈）
+            nativeWebSocket.sendMessageToUser(elderId, messageJson);
+            log.info("✅ 已向长辈 userId={} 推送 PROXY_ORDER_CONFIRMED (同意)", elderId);
             
             // ⭐ 长辈确认后，触发司机分配
             try {
@@ -707,7 +715,7 @@ public class FamilyGuardServiceImpl implements FamilyGuardService {
             
             result.put("status", "REJECTED");
             
-            // ⭐ 通知代叫人（亲友）
+            // ⭐ 构建通知消息
             Map<String, Object> notifyData = new HashMap<>();
             notifyData.put("type", "PROXY_ORDER_CONFIRMED");
             notifyData.put("orderId", orderId);
@@ -715,7 +723,15 @@ public class FamilyGuardServiceImpl implements FamilyGuardService {
             notifyData.put("confirmed", false);
             notifyData.put("rejectReason", request.getRejectReason());
             notifyData.put("confirmTime", LocalDateTime.now().toString());
-            nativeWebSocket.sendMessageToUser(order.getProxyUserId(), com.alibaba.fastjson.JSON.toJSONString(notifyData));
+            String messageJson = com.alibaba.fastjson.JSON.toJSONString(notifyData);
+            
+            // ⭐ 通知代叫人（亲友）
+            nativeWebSocket.sendMessageToUser(order.getProxyUserId(), messageJson);
+            log.info("✅ 已向代叫人 proxyUserId={} 推送 PROXY_ORDER_CONFIRMED (拒绝)", order.getProxyUserId());
+            
+            // ⭐ 也通知长辈自己（确认成功反馈）
+            nativeWebSocket.sendMessageToUser(elderId, messageJson);
+            log.info("✅ 已向长辈 userId={} 推送 PROXY_ORDER_CONFIRMED (拒绝)", elderId);
             
             log.info("❌ 长辈{}拒绝了代叫车请求，订单ID: {}, 原因: {}", elderId, orderId, request.getRejectReason());
             return Result.success(result);

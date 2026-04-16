@@ -25,4 +25,12 @@ public interface DriverAssignmentService {
      * @return 司机信息Map
      */
     Map<String, Object> generateRandomDriverInfo();
+    
+    /**
+     * 用户确认/拒绝司机接单
+     * @param orderId 订单ID
+     * @param userId 用户ID
+     * @param accepted true=同意，false=拒绝
+     */
+    void confirmDriverAcceptance(Long orderId, Long userId, boolean accepted);
 }

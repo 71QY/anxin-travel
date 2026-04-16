@@ -47,12 +47,14 @@ public class GuardModeInterceptor implements HandlerInterceptor {
         "/api/order/current",           // 查看当前订单
         "/api/order/detail",            // 订单详情
         "/api/order/list",              // 订单列表
+        "/api/order/",                  // 订单详情（/api/order/{id}）
         
         // ========== 亲情守护相关 ==========
         "/api/guard/myGuardians",       // 查看亲友列表
         "/api/guard/unbindAll",         // 解绑全部
         "/api/guard/callDriver",        // 呼叫司机
         "/api/guard/callGuardian",      // 呼叫亲友
+        "/api/guard/confirmProxyOrder", // 长辈确认代叫车请求（关键）
         
         // ========== AI助手相关(长辈也需要地图和搜索) ==========
         "/api/agent/location",          // 位置上报(用于地图定位和AI推荐)

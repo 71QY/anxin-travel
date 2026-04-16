@@ -100,8 +100,8 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
         log.info("🚗 开始为订单{}分配模拟司机，userId={}", orderId, userId);
         
         try {
-            // 1. 延迟1-2秒模拟派单过程
-            Thread.sleep(1000 + new Random().nextInt(1000));
+            // 1. 延迟10秒模拟派单过程
+            Thread.sleep(10000);
             
             // 2. 生成随机司机信息
             Map<String, Object> driverInfo = generateRandomDriverInfo();
@@ -115,11 +115,16 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
             
             driverInfo.put("driverLat", driverLat);
             driverInfo.put("driverLng", driverLng);
+            driverInfo.put("orderId", orderId);
+            driverInfo.put("startLat", startLat);
+            driverInfo.put("startLng", startLng);
+            driverInfo.put("destLat", destLat);
+            driverInfo.put("destLng", destLng);
             
-            // 4. 更新订单状态和司机信息
+            // 4. 更新订单状态为1（已确认，等待用户确认接单）
             OrderInfo order = orderMapper.selectById(orderId);
             if (order != null) {
-                order.setStatus(2);
+                order.setStatus(1);
                 order.setDriverName((String) driverInfo.get("driverName"));
                 order.setDriverPhone((String) driverInfo.get("driverPhone"));
                 order.setCarNo((String) driverInfo.get("carNo"));
@@ -129,29 +134,149 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
                 order.setDriverLat(driverLat);
                 order.setDriverLng(driverLng);
                 orderMapper.updateById(order);
-                log.info("✅ 订单{}状态更新为已接单，司机：{}", orderId, order.getDriverName());
+                log.info("✅ 订单{}状态更新为已确认，等待用户确认接单，司机：{}", orderId, order.getDriverName());
             }
             
-            // 5. WebSocket推送 ORDER_ACCEPTED（已接单）
+            // 5. WebSocket推送 DRIVER_REQUEST 弹窗提示（需要用户确认）
+            Map<String, Object> requestMsg = new HashMap<>();
+            requestMsg.put("type", "DRIVER_REQUEST");
+            requestMsg.put("success", true);
+            requestMsg.put("message", "有司机接单，是否允许该司机接单？");
+            requestMsg.putAll(driverInfo);
+            
+            String messageJson = JSON.toJSONString(requestMsg);
+            
+            // ⭐ 推送给乘客（长辈）
+            nativeWebSocket.sendMessageToUser(userId, messageJson);
+            log.info("✅ 已向乘客 userId={} 推送 DRIVER_REQUEST", userId);
+            
+            // ⭐ 如果是代叫车订单，也推送给代叫人（亲友）
+            if (order != null && order.getProxyUserId() != null && order.getProxyUserId() > 0) {
+                nativeWebSocket.sendMessageToUser(order.getProxyUserId(), messageJson);
+                log.info("✅ 已向代叫人 proxyUserId={} 推送 DRIVER_REQUEST", order.getProxyUserId());
+            }
+            
+        } catch (Exception e) {
+            log.error("❌ 司机分配失败，orderId={}", orderId, e);
+        }
+    }
+    
+    /**
+     * 用户确认/拒绝司机接单
+     */
+    public void confirmDriverAcceptance(Long orderId, Long userId, boolean accepted) {
+        log.info("用户{}确认订单{}的司机接单，accepted={}", userId, orderId, accepted);
+        
+        OrderInfo order = orderMapper.selectById(orderId);
+        if (order == null) {
+            log.error("订单不存在，orderId={}", orderId);
+            return;
+        }
+        
+        if (!order.getUserId().equals(userId)) {
+            log.error("无权操作此订单，userId={}, orderId={}", userId, orderId);
+            return;
+        }
+        
+        if (accepted) {
+            // 用户同意接单
+            order.setStatus(2); // 已接单
+            orderMapper.updateById(order);
+            log.info("✅ 订单{}已确认接单，司机：{}", orderId, order.getDriverName());
+            
+            // 构建司机信息
+            Map<String, Object> driverInfo = new HashMap<>();
+            driverInfo.put("driverName", order.getDriverName());
+            driverInfo.put("driverPhone", order.getDriverPhone());
+            driverInfo.put("driverAvatar", "https://api.dicebear.com/7.x/avataaars/svg?seed=" + order.getDriverName());
+            driverInfo.put("carNo", order.getCarNo());
+            driverInfo.put("carType", order.getCarType());
+            driverInfo.put("carColor", order.getCarColor());
+            driverInfo.put("rating", order.getRating() != null ? order.getRating().doubleValue() : 4.9);
+            driverInfo.put("driverLat", order.getDriverLat());
+            driverInfo.put("driverLng", order.getDriverLng());
+            
+            // 推送 ORDER_ACCEPTED
             Map<String, Object> acceptedMsg = new HashMap<>();
             acceptedMsg.put("type", "ORDER_ACCEPTED");
             acceptedMsg.put("orderId", orderId);
             acceptedMsg.put("success", true);
             acceptedMsg.put("message", "司机已接单，正在赶来");
             acceptedMsg.putAll(driverInfo);
-            acceptedMsg.put("startLat", startLat);
-            acceptedMsg.put("startLng", startLng);
-            acceptedMsg.put("destLat", destLat);
-            acceptedMsg.put("destLng", destLng);
+            acceptedMsg.put("startLat", order.getStartLat());
+            acceptedMsg.put("startLng", order.getStartLng());
+            acceptedMsg.put("destLat", order.getDestLat());
+            acceptedMsg.put("destLng", order.getDestLng());
             
-            nativeWebSocket.sendMessageToUser(userId, JSON.toJSONString(acceptedMsg));
-            log.info("✅ 已推送 ORDER_ACCEPTED 给 userId={}, orderId={}", userId, orderId);
+            String messageJson = JSON.toJSONString(acceptedMsg);
             
-            // 6. 模拟车辆行驶（向起点靠近）
-            simulateVehicleMovement(orderId, userId, driverLat, driverLng, startLat, startLng, driverInfo);
+            // ⭐ 推送给乘客（长辈）
+            nativeWebSocket.sendMessageToUser(userId, messageJson);
+            log.info("✅ 已向乘客 userId={} 推送 ORDER_ACCEPTED", userId);
             
-        } catch (Exception e) {
-            log.error("❌ 司机分配失败，orderId={}", orderId, e);
+            // ⭐ 如果是代叫车订单，也推送给代叫人（亲友）
+            if (order.getProxyUserId() != null && order.getProxyUserId() > 0) {
+                nativeWebSocket.sendMessageToUser(order.getProxyUserId(), messageJson);
+                log.info("✅ 已向代叫人 proxyUserId={} 推送 ORDER_ACCEPTED", order.getProxyUserId());
+            }
+            
+            // 开始模拟车辆行驶
+            simulateVehicleMovement(orderId, userId, order.getDriverLat(), order.getDriverLng(), 
+                                   order.getStartLat(), order.getStartLng(), driverInfo);
+        } else {
+            // 用户拒绝接单
+            order.setStatus(0); // 回到待确认状态，等待重新派单
+            order.setDriverName(null);
+            order.setDriverPhone(null);
+            order.setCarNo(null);
+            order.setCarType(null);
+            order.setCarColor(null);
+            order.setRating(null);
+            order.setDriverLat(null);
+            order.setDriverLng(null);
+            orderMapper.updateById(order);
+            log.info("✅ 订单{}用户拒绝接单，重新派单", orderId);
+            
+            // 推送拒绝消息
+            Map<String, Object> rejectedMsg = new HashMap<>();
+            rejectedMsg.put("type", "DRIVER_REJECTED");
+            rejectedMsg.put("orderId", orderId);
+            rejectedMsg.put("success", true);
+            rejectedMsg.put("message", "您已拒绝该司机，正在为您重新派单");
+            
+            String messageJson = JSON.toJSONString(rejectedMsg);
+            
+            // ⭐ 推送给乘客（长辈）
+            nativeWebSocket.sendMessageToUser(userId, messageJson);
+            log.info("✅ 已向乘客 userId={} 推送 DRIVER_REJECTED", userId);
+            
+            // ⭐ 如果是代叫车订单，也推送给代叫人（亲友）
+            if (order.getProxyUserId() != null && order.getProxyUserId() > 0) {
+                nativeWebSocket.sendMessageToUser(order.getProxyUserId(), messageJson);
+                log.info("✅ 已向代叫人 proxyUserId={} 推送 DRIVER_REJECTED", order.getProxyUserId());
+            }
+            
+            // ⭐ 延迟10秒后重新派单（异步）
+            new Thread(() -> {
+                try {
+                    Thread.sleep(10000);  // 延迟10秒
+                    
+                    // 检查订单是否仍然有效（未被取消）
+                    OrderInfo currentOrder = orderMapper.selectById(orderId);
+                    if (currentOrder != null && currentOrder.getStatus() == 0) {
+                        log.info("⏰ 10秒已到，开始为订单{}重新派单", orderId);
+                        assignDriverAndStartSimulation(orderId, userId, 
+                            currentOrder.getStartLat(), currentOrder.getStartLng(),
+                            currentOrder.getDestLat(), currentOrder.getDestLng());
+                    } else {
+                        log.info("⚠️ 订单{}状态已变更（status={}），取消重新派单", 
+                            orderId, currentOrder != null ? currentOrder.getStatus() : "null");
+                    }
+                } catch (Exception e) {
+                    log.error("❌ 重新派单失败，orderId={}", orderId, e);
+                }
+            }).start();
+            log.info("✅ 已调度10秒后重新派单，orderId={}", orderId);
         }
     }
     
@@ -182,7 +307,17 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
                 locationMsg.put("driverLng", newLng);
                 locationMsg.put("etaMinutes", steps - i);  // 预计到达分钟数
                 
-                nativeWebSocket.sendMessageToUser(userId, JSON.toJSONString(locationMsg));
+                String messageJson = JSON.toJSONString(locationMsg);
+                
+                // ⭐ 推送给乘客（长辈）
+                nativeWebSocket.sendMessageToUser(userId, messageJson);
+                
+                // ⭐ 如果是代叫车订单，也推送给代叫人（亲友）
+                OrderInfo order = orderMapper.selectById(orderId);
+                if (order != null && order.getProxyUserId() != null && order.getProxyUserId() > 0) {
+                    nativeWebSocket.sendMessageToUser(order.getProxyUserId(), messageJson);
+                }
+                
                 log.debug("📍 推送司机位置：step={}/{}, lat={}, lng={}", i, steps, newLat, newLng);
             }
             
@@ -195,11 +330,22 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
             arrivedMsg.put("driverLat", targetLat);
             arrivedMsg.put("driverLng", targetLng);
             
-            nativeWebSocket.sendMessageToUser(userId, JSON.toJSONString(arrivedMsg));
+            String messageJson = JSON.toJSONString(arrivedMsg);
+            
+            // ⭐ 推送给乘客（长辈）
+            nativeWebSocket.sendMessageToUser(userId, messageJson);
+            log.info("✅ 已向乘客 userId={} 推送 DRIVER_ARRIVED", userId);
+            
+            // ⭐ 如果是代叫车订单，也推送给代叫人（亲友）
+            OrderInfo order = orderMapper.selectById(orderId);
+            if (order != null && order.getProxyUserId() != null && order.getProxyUserId() > 0) {
+                nativeWebSocket.sendMessageToUser(order.getProxyUserId(), messageJson);
+                log.info("✅ 已向代叫人 proxyUserId={} 推送 DRIVER_ARRIVED", order.getProxyUserId());
+            }
+            
             log.info("✅ 司机已到达上车点，orderId={}", orderId);
             
             // 更新订单状态为3（行程中）和司机位置
-            OrderInfo order = orderMapper.selectById(orderId);
             if (order != null) {
                 order.setStatus(3);
                 order.setDriverLat(targetLat);
