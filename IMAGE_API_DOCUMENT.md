@@ -274,7 +274,8 @@ Glide.with(context)
 
 #### 连接地址
 ```
-ws://192.168.1.106:8080/ws/agent?token=YOUR_TOKEN
+// a 的端口: ws://192.168.1.106:8080/ws/agent?token=YOUR_TOKEN
+ws://192.168.189.57:8080/ws/agent?token=YOUR_TOKEN
 ```
 
 #### 发送图片消息
@@ -406,7 +407,8 @@ class ImageRecognitionViewModel : ViewModel() {
     fun initWebSocket() {
         val client = OkHttpClient()
         val request = Request.Builder()
-            .url("ws://192.168.1.106:8080/ws/agent?token=${getToken()}")
+            // a 的端口: .url("ws://192.168.1.106:8080/ws/agent?token=${getToken()}")
+            .url("ws://192.168.189.57:8080/ws/agent?token=${getToken()}")
             .build()
         
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
@@ -535,7 +537,8 @@ class ImageRecognitionService {
     // 1. 连接 WebSocket
     connect() {
         const token = getToken();
-        this.ws = new WebSocket(`ws://192.168.1.106:8080/ws/agent?token=${token}`);
+        // a 的端口: this.ws = new WebSocket(`ws://192.168.1.106:8080/ws/agent?token=${token}`);
+        this.ws = new WebSocket(`ws://192.168.189.57:8080/ws/agent?token=${token}`);
         
         this.ws.onmessage = (event) => {
             const response = JSON.parse(event.data);

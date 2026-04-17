@@ -400,7 +400,8 @@ class ImageRecognitionActivity : AppCompatActivity() {
     private fun initWebSocket() {
         val client = OkHttpClient()
         val request = Request.Builder()
-            .url("ws://192.168.1.106:8080/ws/agent?token=${getToken()}")
+            // a 的端口: .url("ws://192.168.1.106:8080/ws/agent?token=${getToken()}")
+            .url("ws://192.168.189.57:8080/ws/agent?token=${getToken()}")
             .build()
         
         webSocket = client.newWebSocket(request, object : WebSocketListener() {

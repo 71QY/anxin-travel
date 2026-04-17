@@ -122,7 +122,7 @@ public class MapController {
         return Result.success(response);
     }
 
-    @GetMapping("/poi/nearby")
+    @GetMapping("/poi/search")
     public Result<List<PoiDTO>> searchNearbyPoi(
             @RequestParam String keyword,
             @RequestParam(required = false) Double lat,
@@ -138,6 +138,14 @@ public class MapController {
             return Result.error("关键词不能为空");
         }
         
+        // 【全国搜索】如果没有坐标且请求全国搜索，使用默认坐标（北京）
+        if (nationwide && (lat == null || lng == null)) {
+            lat = 39.9042;
+            lng = 116.4074;
+            radius = 50000;  // 全国搜索使用 50km 半径
+            log.info("✅ 全国搜索模式：使用默认坐标 ({}, {})", lat, lng);
+        }
+        
         // 【自动定位】如果前端没有传递坐标，尝试 IP 定位
         if (lat == null || lng == null) {
             log.warn("⚠️ 前端未传递坐标，尝试 IP 定位...");
@@ -148,11 +156,13 @@ public class MapController {
                     lng = ipLocation[1];
                     log.info("✅ IP 定位成功：lat={}, lng={}", lat, lng);
                 } else {
-                    return Result.error("无法获取您的位置信息，请在地图上手动选择起点");
+                    // 定位失败时返回空列表，而不是错误
+                    log.warn("⚠️ IP 定位失败，返回空列表");
+                    return Result.success(new ArrayList<>());
                 }
             } catch (Exception e) {
                 log.error("IP 定位失败", e);
-                return Result.error("定位失败：" + e.getMessage());
+                return Result.success(new ArrayList<>());
             }
         }
         
@@ -171,15 +181,6 @@ public class MapController {
                     (com.anxin.travel.agent.dto.AgentResponse) result;
                 poiList = response.getPlaces();
                 log.info("✅ 智能搜索成功：找到 {} 个地点（已按评分降序排列）", poiList != null ? poiList.size() : 0);
-                
-                // 【关键】确保返回给前端的列表已经按评分排序
-                if (poiList != null && !poiList.isEmpty()) {
-                    log.info("📊 返回给前端的 POI 列表（按评分从高到低）:");
-                    for (int i = 0; i < Math.min(5, poiList.size()); i++) {
-                        PoiDTO poi = poiList.get(i);
-                        log.info("  #{}: {} - 评分：{:.4f}", i + 1, poi.getName(), poi.getScore());
-                    }
-                }
             } else if (result instanceof List) {
                 @SuppressWarnings("unchecked")
                 List<PoiDTO> searchResult = (List<PoiDTO>) result;
@@ -190,13 +191,30 @@ public class MapController {
                 poiList = new ArrayList<>();
             }
             
-            // 【注意】不再进行二次过滤，因为智能体服务内部已经完成过滤
-            log.info("POI 搜索成功：找到 {} 个地点", poiList.size());
-            return Result.success(poiList);
+            // 确保不为 null
+            if (poiList == null) {
+                poiList = new ArrayList<>();
+            }
+            
+            // 【分页处理】
+            int totalSize = poiList.size();
+            int fromIndex = (page - 1) * pageSize;
+            int toIndex = Math.min(fromIndex + pageSize, totalSize);
+            
+            List<PoiDTO> pagedList;
+            if (fromIndex >= totalSize) {
+                pagedList = new ArrayList<>();
+            } else {
+                pagedList = poiList.subList(fromIndex, toIndex);
+            }
+            
+            log.info("📊 分页结果：总 {} 条，返回第 {} 页，每页 {} 条", totalSize, page, pageSize);
+            return Result.success(pagedList);
             
         } catch (Exception e) {
             log.error("❌ 智能搜索失败", e);
-            return Result.error("搜索失败：" + e.getMessage());
+            // 异常时返回空列表，而不是错误
+            return Result.success(new ArrayList<>());
         }
     }
 

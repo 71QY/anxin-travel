@@ -97,7 +97,8 @@ recognizer.startListening(recognizerListener)
 
 #### 连接地址
 ```
-ws://192.168.1.106:8080/ws/agent?token=YOUR_TOKEN
+// a 的端口: ws://192.168.1.106:8080/ws/agent?token=YOUR_TOKEN
+ws://192.168.189.57:8080/ws/agent?token=YOUR_TOKEN
 ```
 
 #### 发送语音识别后的文本

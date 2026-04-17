@@ -1,5 +1,6 @@
 server:
   port: 8080
+  address: 0.0.0.0  # 允许外部访问（真机联调必需）
   servlet:
     encoding:
       charset: UTF-8

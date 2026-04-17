@@ -21,7 +21,8 @@
 ### 1.1 连接地址
 
 ```
-ws://192.168.1.106:8080/ws/agent?token=YOUR_TOKEN
+// a 的端口: ws://192.168.1.106:8080/ws/agent?token=YOUR_TOKEN
+ws://192.168.189.57:8080/ws/agent?token=YOUR_TOKEN
 ```
 
 **参数说明**：
@@ -236,7 +237,8 @@ class ImageRecognitionViewModel : ViewModel() {
             .build()
         
         val request = Request.Builder()
-            .url("ws://192.168.1.106:8080/ws/agent?token=${getToken()}")
+            // a 的端口: .url("ws://192.168.1.106:8080/ws/agent?token=${getToken()}")
+            .url("ws://192.168.189.57:8080/ws/agent?token=${getToken()}")
             .build()
         
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
@@ -441,7 +443,8 @@ class ImageRecognitionService {
     // 1. 连接 WebSocket
     connect() {
         const token = getToken();
-        this.ws = new WebSocket(`ws://192.168.1.106:8080/ws/agent?token=${token}`);
+        // a 的端口: this.ws = new WebSocket(`ws://192.168.1.106:8080/ws/agent?token=${token}`);
+        this.ws = new WebSocket(`ws://192.168.189.57:8080/ws/agent?token=${token}`);
         
         this.ws.onopen = () => {
             console.log('WebSocket 连接成功');

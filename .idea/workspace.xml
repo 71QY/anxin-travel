@@ -6,12 +6,12 @@
   <component name="ChangeListManager">
     <list default="true" id="7c5536af-c7f0-44f5-ac4b-bb8c2fe2da43" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/config/GuardModeInterceptor.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/config/GuardModeInterceptor.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/guard/service/impl/FamilyGuardServiceImpl.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/guard/service/impl/FamilyGuardServiceImpl.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/controller/OrderController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/controller/OrderController.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/DriverAssignmentService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/DriverAssignmentService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/impl/DriverAssignmentServiceImpl.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/impl/DriverAssignmentServiceImpl.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/impl/OrderServiceImpl.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/impl/OrderServiceImpl.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/FRONTEND_FIX_GUIDE.md" beforeDir="false" afterPath="$PROJECT_DIR$/FRONTEND_FIX_GUIDE.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/IMAGE_API_DOCUMENT.md" beforeDir="false" afterPath="$PROJECT_DIR$/IMAGE_API_DOCUMENT.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/IMAGE_RECOGNITION_API_COMPLETE.md" beforeDir="false" afterPath="$PROJECT_DIR$/IMAGE_RECOGNITION_API_COMPLETE.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/VOICE_API_DOCUMENT.md" beforeDir="false" afterPath="$PROJECT_DIR$/VOICE_API_DOCUMENT.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/resources/application.yml" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/resources/application.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/安装使用说明.md" beforeDir="false" afterPath="$PROJECT_DIR$/安装使用说明.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -125,5 +125,16 @@
       <updated>1774438983431</updated>
     </task>
     <servers />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
 </project>
