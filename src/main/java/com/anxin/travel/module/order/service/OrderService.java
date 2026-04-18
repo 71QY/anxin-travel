@@ -30,4 +30,10 @@ public interface OrderService {
      * @param userId 用户ID（乘车人或代叫人）
      */
     void completeOrder(Long orderId, Long userId);
+    
+    /**
+     * 【测试接口】模拟司机接单
+     * @param orderId 订单ID
+     */
+    void mockDriverAccept(Long orderId);
 }

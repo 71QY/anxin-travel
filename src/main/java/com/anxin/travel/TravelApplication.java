@@ -8,6 +8,7 @@ import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.env.PropertySource;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import javax.annotation.PostConstruct;
 import java.util.Iterator;
 
@@ -15,6 +16,7 @@ import java.util.Iterator;
 @SpringBootApplication
 @MapperScan("com.anxin.travel.module.*.mapper")
 @EnableAsync  // ⭐ 启用异步支持（用于司机分配任务）
+@EnableScheduling  // ⭐ 启用定时任务（用于行程追踪）
 public class TravelApplication {
 
     private final ConfigurableEnvironment environment;

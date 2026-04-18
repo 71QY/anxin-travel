@@ -81,6 +81,20 @@ public class OrderServiceImpl implements OrderService {
             log.error("❌ 触发司机分配失败，但订单已创建成功", e);
         }
         
+        // ⭐ 延迟10秒后自动模拟司机接单（将订单状态改为5）
+        final Long orderId = order.getId();
+        final double finalStartLat = startLat;
+        final double finalStartLng = startLng;
+        new Thread(() -> {
+            try {
+                Thread.sleep(10000); // 延迟10秒
+                log.info("⏰ 10秒已到，开始自动模拟司机接单，orderId={}", orderId);
+                mockDriverAcceptInternal(orderId, finalStartLat, finalStartLng);
+            } catch (InterruptedException e) {
+                log.error("延迟任务被中断", e);
+            }
+        }, "auto-driver-accept-" + orderId).start();
+        
         OrderVO vo = new OrderVO();
         BeanUtils.copyProperties(order, vo);
         vo.setPoiName(vo.getDestAddress());  // 【关键】前端期望 poiName 字段
@@ -546,6 +560,73 @@ public class OrderServiceImpl implements OrderService {
         if (order.getProxyUserId() != null && order.getProxyUserId() > 0) {
             nativeWebSocket.sendMessageToUser(order.getProxyUserId(), messageJson);
             log.info("✅ 已向代叫人 proxyUserId={} 推送 TRIP_COMPLETED", order.getProxyUserId());
+        }
+    }
+    
+    /**
+     * 【测试接口】模拟司机接单
+     * 将订单状态改为5（行程中），并设置司机信息
+     */
+    @Override
+    @Transactional
+    public void mockDriverAccept(Long orderId) {
+        OrderInfo order = orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new RuntimeException("订单不存在");
+        }
+        mockDriverAcceptInternal(orderId, order.getStartLat(), order.getStartLng());
+    }
+    
+    /**
+     * 内部方法：执行司机接单逻辑
+     */
+    private void mockDriverAcceptInternal(Long orderId, double startLat, double startLng) {
+        try {
+            log.info("【自动接单】开始处理，orderId={}", orderId);
+            
+            // 1. 查询订单
+            OrderInfo order = orderMapper.selectById(orderId);
+            if (order == null) {
+                log.error("订单不存在，orderId={}", orderId);
+                return;
+            }
+            
+            // 2. 生成随机司机信息
+            Map<String, Object> driverInfo = driverAssignmentService.generateRandomDriverInfo();
+            
+            // 3. 更新订单状态为5（行程中），并设置司机信息
+            order.setStatus(5);
+            order.setDriverName((String) driverInfo.get("driverName"));
+            order.setDriverPhone((String) driverInfo.get("driverPhone"));
+            order.setCarNo((String) driverInfo.get("carNo"));
+            order.setCarType((String) driverInfo.get("carType"));
+            order.setCarColor((String) driverInfo.get("carColor"));
+            order.setRating((Double) driverInfo.get("rating"));
+            
+            // 4. 设置司机位置（起点附近）
+            Random random = new Random();
+            double offsetLat = (random.nextDouble() - 0.5) * 0.01;
+            double offsetLng = (random.nextDouble() - 0.5) * 0.01;
+            order.setDriverLat(startLat + offsetLat);
+            order.setDriverLng(startLng + offsetLng);
+            
+            // 5. 获取一个真实司机ID
+            try {
+                com.anxin.travel.module.order.mapper.DriverMapper driverMapper = 
+                    com.anxin.travel.common.util.SpringContextUtil.getBean(com.anxin.travel.module.order.mapper.DriverMapper.class);
+                var driver = driverMapper.selectOne(new LambdaQueryWrapper<com.anxin.travel.module.order.entity.Driver>().last("LIMIT 1"));
+                if (driver != null) {
+                    order.setDriverId(driver.getId());
+                }
+            } catch (Exception e) {
+                log.warn("获取司机ID失败，使用null", e);
+            }
+            
+            orderMapper.updateById(order);
+            log.info("✅ 订单{}已自动接单，status=5, driver={}", orderId, order.getDriverName());
+            
+        } catch (Exception e) {
+            log.error("❌ 自动接单失败，orderId={}", orderId, e);
         }
     }
 }

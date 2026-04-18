@@ -123,4 +123,15 @@ public class OrderController {
         orderService.completeOrder(id, userId);
         return Result.success();
     }
+    
+    /**
+     * 【测试接口】模拟司机接单
+     * 将订单状态改为5（行程中），并设置司机信息
+     */
+    @PostMapping("/test/mock-driver-accept/{orderId}")
+    public Result<Void> mockDriverAccept(@PathVariable Long orderId) {
+        log.info("【测试】模拟司机接单，orderId={}", orderId);
+        orderService.mockDriverAccept(orderId);
+        return Result.success();
+    }
 }

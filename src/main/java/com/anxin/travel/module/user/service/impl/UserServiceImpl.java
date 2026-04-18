@@ -139,7 +139,7 @@ public class UserServiceImpl implements UserService {
         }
         
         if (!isValidPassword(newPassword)) {
-            throw new RuntimeException("密码必须为 8 位，且包含字母和特殊符号");
+            throw new RuntimeException("密码最少10位，且必须包含字母和特殊符号");
         }
         
         String codeKey = "sms:code:" + phone;
@@ -274,7 +274,7 @@ public class UserServiceImpl implements UserService {
     }
     
     private boolean isValidPassword(String password) {
-        if (password == null || password.length() != 10) {
+        if (password == null || password.length() < 10) {
             return false;
         }
         boolean hasLetter = false;
@@ -300,7 +300,7 @@ public class UserServiceImpl implements UserService {
         }
         
         if (!isValidPassword(request.getPassword())) {
-            throw new RuntimeException("密码必须为10位，且包含字母和特殊符号");
+            throw new RuntimeException("密码最少10位，且必须包含字母和特殊符号");
         }
         
         if (request.getNickname() == null || request.getNickname().trim().isEmpty()) {

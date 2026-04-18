@@ -165,23 +165,29 @@ public class UserFavoriteLocationController {
             guardianUserId, request.getFavoriteId(), request.getElderUserId());
         
         if (request.getFavoriteId() == null || request.getElderUserId() == null) {
+            log.warn("❌ 参数错误：favoriteId 或 elderUserId 为空");
             return Result.error(400, "参数错误：favoriteId 和 elderUserId 不能为空");
         }
         
         try {
             favoriteService.shareToElder(guardianUserId, request.getFavoriteId(), 
                 request.getElderUserId(), request.getSaveAsNew());
+            log.info("✅ 分享收藏给长辈成功");
             return Result.success();
         } catch (RuntimeException e) {
             log.error("❌ 分享收藏给长辈失败：{}", e.getMessage());
+            Result<Void> errorResult;
             if (e.getMessage().contains("不存在亲友关系")) {
-                return Result.error(403, e.getMessage());
+                errorResult = Result.error(403, e.getMessage());
             } else if (e.getMessage().contains("收藏地点不存在")) {
-                return Result.error(404, e.getMessage());
+                errorResult = Result.error(404, e.getMessage());
             } else if (e.getMessage().contains("已达上限")) {
-                return Result.error(429, e.getMessage());
+                errorResult = Result.error(429, e.getMessage());
+            } else {
+                errorResult = Result.error(500, e.getMessage());
             }
-            return Result.error(500, e.getMessage());
+            log.info("📤 返回前端：code={}, message={}", errorResult.getCode(), errorResult.getMessage());
+            return errorResult;
         }
     }
 }
