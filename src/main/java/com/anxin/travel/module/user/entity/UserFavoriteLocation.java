@@ -18,6 +18,8 @@ public class UserFavoriteLocation {
     private Double latitude;
     private Double longitude;
     private String type; // HOME, COMPANY, HOSPITAL, CUSTOM
+    private String phone; // 联系电话
+    private String description; // 地点简介说明
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

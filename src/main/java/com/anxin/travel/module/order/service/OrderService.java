@@ -16,4 +16,18 @@ public interface OrderService {
      * 支持：长辈(user_id) 或 亲友(proxy_user_id) 查询
      */
     OrderVO getCurrentOrder(Long userId);
+    
+    /**
+     * 乘客上车/开始行程
+     * @param orderId 订单ID
+     * @param userId 用户ID（乘车人或代叫人）
+     */
+    void boardOrder(Long orderId, Long userId);
+    
+    /**
+     * 到达目的地/完成行程
+     * @param orderId 订单ID
+     * @param userId 用户ID（乘车人或代叫人）
+     */
+    void completeOrder(Long orderId, Long userId);
 }

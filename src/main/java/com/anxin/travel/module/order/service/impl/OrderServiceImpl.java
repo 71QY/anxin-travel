@@ -1,5 +1,6 @@
 package com.anxin.travel.module.order.service.impl;
 
+import com.alibaba.fastjson.JSON;
 import com.anxin.travel.module.order.dto.CreateOrderRequest;
 import com.anxin.travel.module.order.dto.OrderVO;
 import com.anxin.travel.module.order.entity.OrderInfo;
@@ -16,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -29,6 +31,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderMapper orderMapper;
     private final com.anxin.travel.module.map.client.AmapClient amapClient;
     private final com.anxin.travel.module.order.service.DriverAssignmentService driverAssignmentService;
+    private final com.anxin.travel.agent.controller.NativeWebSocket nativeWebSocket;
 
     @Override
     @Transactional
@@ -313,7 +316,7 @@ public class OrderServiceImpl implements OrderService {
         if (order.getStatus() != 1) {
             throw new RuntimeException("订单状态不正确，无法确认");
         }
-        order.setStatus(3);
+        order.setStatus(3);  // 3-司机已接单（兼容旧逻辑）
         orderMapper.updateById(order);
         log.info("订单已确认完成，订单号：{}", order.getOrderNo());
     }
@@ -362,12 +365,12 @@ public class OrderServiceImpl implements OrderService {
     public OrderVO getCurrentOrder(Long userId) {
         log.info("【亲情守护】查询当前订单，userId: {}", userId);
         
-        // 查询条件：user_id=userId OR proxy_user_id=userId，且状态为进行中(0/1/2)
+        // 查询条件：user_id=userId OR proxy_user_id=userId，且状态为进行中(0/1/2/3/4/5)
         LambdaQueryWrapper<OrderInfo> wrapper = new LambdaQueryWrapper<OrderInfo>()
                 .and(w -> w.eq(OrderInfo::getUserId, userId)
                         .or()
                         .eq(OrderInfo::getProxyUserId, userId))
-                .in(OrderInfo::getStatus, 0, 1, 2)  // 待接单/已接单/行程中
+                .in(OrderInfo::getStatus, 0, 1, 2, 3, 4, 5)  // 待确认/已确认/等待司机接单/司机已接单/司机已到达/行程中
                 .orderByDesc(OrderInfo::getCreateTime)
                 .last("LIMIT 1");
         
@@ -400,5 +403,149 @@ public class OrderServiceImpl implements OrderService {
             vo.getDriverName() != null);
         
         return vo;
+    }
+    
+    @Override
+    @Transactional
+    public void boardOrder(Long orderId, Long userId) {
+        log.info("【乘客上车】orderId={}, userId={}", orderId, userId);
+        
+        // 1. 验证订单是否存在
+        OrderInfo order = orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new RuntimeException("订单不存在");
+        }
+        
+        // 2. 验证权限：允许乘车人或代叫人操作
+        if (!order.getUserId().equals(userId) && 
+            (order.getProxyUserId() == null || !order.getProxyUserId().equals(userId))) {
+            throw new RuntimeException("无权操作此订单");
+        }
+        
+        // 3. 验证状态：必须是 4（司机已到达）
+        if (order.getStatus() != 4) {
+            String statusText = getStatusText(order.getStatus());
+            throw new RuntimeException("订单状态不正确，当前状态：" + statusText);
+        }
+        
+        // 4. 更新订单状态：4 -> 5（行程中）
+        order.setStatus(5);
+        orderMapper.updateById(order);
+        log.info("✅ 订单{}状态更新为行程中（status=5）", orderId);
+        
+        // 5. 触发 WebSocket 推送：TRIP_STARTED
+        try {
+            pushTripStartedMessage(order);
+        } catch (Exception e) {
+            log.error("❌ WebSocket 推送 TRIP_STARTED 失败，但订单状态已更新", e);
+        }
+    }
+    
+    @Override
+    @Transactional
+    public void completeOrder(Long orderId, Long userId) {
+        log.info("【完成行程】orderId={}, userId={}", orderId, userId);
+        
+        // 1. 验证订单是否存在
+        OrderInfo order = orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new RuntimeException("订单不存在");
+        }
+        
+        // 2. 验证权限：允许乘车人或代叫人操作
+        if (!order.getUserId().equals(userId) && 
+            (order.getProxyUserId() == null || !order.getProxyUserId().equals(userId))) {
+            throw new RuntimeException("无权操作此订单");
+        }
+        
+        // 3. 验证状态：必须是 5（行程中）
+        if (order.getStatus() != 5) {
+            String statusText = getStatusText(order.getStatus());
+            throw new RuntimeException("订单状态不正确，当前状态：" + statusText);
+        }
+        
+        // 4. 更新订单状态：5 -> 6（已完成）
+        order.setStatus(6);
+        // 计算实际费用（暂时使用预估价格）
+        if (order.getActualPrice() == null) {
+            order.setActualPrice(order.getEstimatePrice());
+        }
+        orderMapper.updateById(order);
+        log.info("✅ 订单{}状态更新为已完成（status=6），actualPrice={}", orderId, order.getActualPrice());
+        
+        // 5. 触发 WebSocket 推送：TRIP_COMPLETED
+        try {
+            pushTripCompletedMessage(order);
+        } catch (Exception e) {
+            log.error("❌ WebSocket 推送 TRIP_COMPLETED 失败，但订单状态已更新", e);
+        }
+    }
+    
+    /**
+     * 获取状态文本描述
+     */
+    private String getStatusText(Integer status) {
+        if (status == null) return "未知";
+        switch (status) {
+            case 0: return "待确认";
+            case 1: return "已确认";
+            case 2: return "等待司机接单";
+            case 3: return "司机已接单";
+            case 4: return "司机已到达";
+            case 5: return "行程中";
+            case 6: return "已完成";
+            case 7: return "已取消";
+            case 8: return "已拒绝";
+            default: return "未知状态(" + status + ")";
+        }
+    }
+    
+    /**
+     * 推送 TRIP_STARTED 消息
+     */
+    private void pushTripStartedMessage(OrderInfo order) {
+        Map<String, Object> message = new HashMap<>();
+        message.put("type", "TRIP_STARTED");
+        message.put("orderId", order.getId());
+        message.put("timestamp", System.currentTimeMillis());
+        message.put("message", "乘客已上车，行程开始");
+        message.put("status", 5);
+        
+        String messageJson = JSON.toJSONString(message);
+        
+        // 推送给乘车人（长辈）
+        nativeWebSocket.sendMessageToUser(order.getUserId(), messageJson);
+        log.info("✅ 已向乘车人 userId={} 推送 TRIP_STARTED", order.getUserId());
+        
+        // 如果是代叫车订单，也推送给代叫人（亲友）
+        if (order.getProxyUserId() != null && order.getProxyUserId() > 0) {
+            nativeWebSocket.sendMessageToUser(order.getProxyUserId(), messageJson);
+            log.info("✅ 已向代叫人 proxyUserId={} 推送 TRIP_STARTED", order.getProxyUserId());
+        }
+    }
+    
+    /**
+     * 推送 TRIP_COMPLETED 消息
+     */
+    private void pushTripCompletedMessage(OrderInfo order) {
+        Map<String, Object> message = new HashMap<>();
+        message.put("type", "TRIP_COMPLETED");
+        message.put("orderId", order.getId());
+        message.put("timestamp", System.currentTimeMillis());
+        message.put("message", "行程已完成，感谢使用！");
+        message.put("status", 6);
+        message.put("actualPrice", order.getActualPrice());
+        
+        String messageJson = JSON.toJSONString(message);
+        
+        // 推送给乘车人（长辈）
+        nativeWebSocket.sendMessageToUser(order.getUserId(), messageJson);
+        log.info("✅ 已向乘车人 userId={} 推送 TRIP_COMPLETED", order.getUserId());
+        
+        // 如果是代叫车订单，也推送给代叫人（亲友）
+        if (order.getProxyUserId() != null && order.getProxyUserId() > 0) {
+            nativeWebSocket.sendMessageToUser(order.getProxyUserId(), messageJson);
+            log.info("✅ 已向代叫人 proxyUserId={} 推送 TRIP_COMPLETED", order.getProxyUserId());
+        }
     }
 }

@@ -43,6 +43,9 @@ public class GuardModeInterceptor implements HandlerInterceptor {
         "/api/user/avatar",             // 头像上传/获取
         "/api/user/emergency",          // 紧急联系人列表
         
+        // ========== 收藏相关 ==========
+        "/api/favorites",               // 收藏列表、添加、更新、删除
+        
         // ========== 订单相关 ==========
         "/api/order/current",           // 查看当前订单
         "/api/order/detail",            // 订单详情

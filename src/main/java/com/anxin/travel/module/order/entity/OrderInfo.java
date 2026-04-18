@@ -21,7 +21,7 @@ public class OrderInfo {
     private Double destLat;
     private Double destLng;
     private String destAddress;
-    private Integer status;  // 0-待确认 1-已确认/待接单 2-司机已接单 3-行程中 4-已完成 5-已取消 6-已拒绝
+    private Integer status;  // 0-待确认 1-已确认 2-等待司机接单 3-司机已接单 4-司机已到达 5-行程中 6-已完成 7-已取消 8-已拒绝
     private String platformUsed;
     private String platformOrderId;
     private BigDecimal estimatePrice;

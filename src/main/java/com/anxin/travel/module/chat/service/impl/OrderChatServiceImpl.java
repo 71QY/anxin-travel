@@ -1,6 +1,7 @@
 package com.anxin.travel.module.chat.service.impl;
 
 import com.anxin.travel.agent.controller.NativeWebSocket;
+import com.anxin.travel.agent.service.VoiceService;
 import com.anxin.travel.common.result.Result;
 import com.anxin.travel.module.chat.dto.ChatMessageRequest;
 import com.anxin.travel.module.chat.entity.OrderChat;
@@ -32,6 +33,8 @@ public class OrderChatServiceImpl implements OrderChatService {
     private UserMapper userMapper;
     @Autowired
     private NativeWebSocket nativeWebSocket;
+    @Autowired
+    private VoiceService voiceService;
 
     @Override
     public Result<?> getOrderChatHistory(Long orderId, Long userId) {
@@ -95,20 +98,26 @@ public class OrderChatServiceImpl implements OrderChatService {
 
     @Override
     public Result<?> voiceToText(String audioBase64) {
-        // TODO: 调用通义千问语音识别API
-        // 暂时返回模拟数据
-        Map<String, Object> data = new HashMap<>();
-        data.put("text", "我到了");  // 模拟识别结果
-        return Result.success(data);
+        try {
+            // 调用通义千问语音识别 API
+            Map<String, Object> data = voiceService.voiceToText(audioBase64, "mandarin");
+            return Result.success(data);
+        } catch (Exception e) {
+            log.error("❌ 语音转文字失败", e);
+            return Result.error("语音识别失败：" + e.getMessage());
+        }
     }
 
     @Override
     public Result<?> textToSpeech(String text) {
-        // TODO: 调用阿里云TTS API
-        // 暂时返回模拟数据
-        Map<String, Object> data = new HashMap<>();
-        data.put("audioUrl", "https://example.com/audio.mp3");  // 模拟音频URL
-        return Result.success(data);
+        try {
+            // 调用通义千问 TTS API
+            Map<String, Object> data = voiceService.textToSpeech(text, null, 50, 50);
+            return Result.success(data);
+        } catch (Exception e) {
+            log.error("❌ 文字转语音失败", e);
+            return Result.error("文字转语音失败：" + e.getMessage());
+        }
     }
 
     /**

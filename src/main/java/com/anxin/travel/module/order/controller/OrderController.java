@@ -99,4 +99,28 @@ public class OrderController {
         driverAssignmentService.confirmDriverAcceptance(orderId, userId, accepted);
         return Result.success();
     }
+    
+    /**
+     * 乘客上车/开始行程
+     * 将订单状态从 4（司机已到达）更新为 5（行程中）
+     */
+    @PostMapping("/{id}/board")
+    public Result<Void> boardOrder(@PathVariable Long id) {
+        Long userId = UserContext.getUserId();
+        log.info("【乘客上车】userId={}, orderId={}", userId, id);
+        orderService.boardOrder(id, userId);
+        return Result.success();
+    }
+    
+    /**
+     * 到达目的地/完成行程
+     * 将订单状态从 5（行程中）更新为 6（已完成）
+     */
+    @PostMapping("/{id}/complete")
+    public Result<Void> completeOrder(@PathVariable Long id) {
+        Long userId = UserContext.getUserId();
+        log.info("【完成行程】userId={}, orderId={}", userId, id);
+        orderService.completeOrder(id, userId);
+        return Result.success();
+    }
 }

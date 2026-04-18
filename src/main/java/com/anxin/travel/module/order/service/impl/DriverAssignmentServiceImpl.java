@@ -180,7 +180,7 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
         
         if (accepted) {
             // 用户同意接单
-            order.setStatus(2); // 已接单
+            order.setStatus(3); // 3-司机已接单
             orderMapper.updateById(order);
             log.info("✅ 订单{}已确认接单，司机：{}", orderId, order.getDriverName());
             
@@ -345,13 +345,13 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
             
             log.info("✅ 司机已到达上车点，orderId={}", orderId);
             
-            // 更新订单状态为3（行程中）和司机位置
+            // 更新订单状态为4（司机已到达）和司机位置
             if (order != null) {
-                order.setStatus(3);
+                order.setStatus(4);  // 4-司机已到达
                 order.setDriverLat(targetLat);
                 order.setDriverLng(targetLng);
                 orderMapper.updateById(order);
-                log.info("✅ 订单{}状态更新为行程中", orderId);
+                log.info("✅ 订单{}状态更新为司机已到达（status=4）", orderId);
             }
             
         } catch (Exception e) {
