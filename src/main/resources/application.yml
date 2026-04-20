@@ -62,7 +62,7 @@ tongyi:
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl  # 改为 SLF4J，减少控制台输出
     # 明确指定 JDBC 类型处理器使用 UTF-8
     jdbc-type-for-null: OTHER
   global-config:

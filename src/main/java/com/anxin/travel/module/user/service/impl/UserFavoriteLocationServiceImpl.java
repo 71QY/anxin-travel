@@ -232,6 +232,25 @@ public class UserFavoriteLocationServiceImpl implements UserFavoriteLocationServ
             SpringContextUtil.getBean(com.anxin.travel.module.user.mapper.UserMapper.class)
                 .selectById(elderUserId);
         message.put("elderName", elder != null ? elder.getNickname() : "长辈");
+        
+        // ⭐ 新增：获取长辈实时位置（从 Redis 缓存读取）
+        try {
+            com.anxin.travel.agent.service.MemoryService memoryService = 
+                SpringContextUtil.getBean(com.anxin.travel.agent.service.MemoryService.class);
+            double[] location = memoryService.getLocation("user_" + elderUserId);
+            
+            if (location != null && location.length >= 2) {
+                message.put("elderCurrentLat", location[0]);
+                message.put("elderCurrentLng", location[1]);
+                message.put("elderLocationTimestamp", System.currentTimeMillis());
+                log.info("✅ 已附加长辈实时位置：lat={}, lng={}", location[0], location[1]);
+            } else {
+                log.warn("⚠️ 未找到长辈{}的位置信息，将使用默认起点", elderUserId);
+            }
+        } catch (Exception e) {
+            log.error("❌ 获取长辈位置失败", e);
+        }
+        
         message.put("timestamp", System.currentTimeMillis());
         
         String messageJson = JSON.toJSONString(message);

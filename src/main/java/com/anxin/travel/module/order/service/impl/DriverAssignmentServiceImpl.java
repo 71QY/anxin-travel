@@ -121,10 +121,21 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
             driverInfo.put("destLat", destLat);
             driverInfo.put("destLng", destLng);
             
-            // 4. 更新订单状态为1（已确认，等待用户确认接单）
+            // 4. 更新订单状态和司机信息
             OrderInfo order = orderMapper.selectById(orderId);
             if (order != null) {
-                order.setStatus(1);
+                // ⭐ 根据订单类型设置状态
+                if (order.getStatus() == 0) {
+                    // 待确认订单（不应该走到这里，因为需要长辈先确认）
+                    log.warn("⚠️ 订单{}状态为0（待确认），不应触发司机分配", orderId);
+                    return;
+                } else if (order.getStatus() == 1 || order.getStatus() == 2) {
+                    // 已确认或等待接单，更新为1（等待用户确认司机）
+                    order.setStatus(1);
+                    log.info("✅ 订单{}状态更新为1（等待用户确认司机）", orderId);
+                }
+                
+                // 更新司机信息
                 order.setDriverName((String) driverInfo.get("driverName"));
                 order.setDriverPhone((String) driverInfo.get("driverPhone"));
                 order.setCarNo((String) driverInfo.get("carNo"));
@@ -134,7 +145,7 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
                 order.setDriverLat(driverLat);
                 order.setDriverLng(driverLng);
                 orderMapper.updateById(order);
-                log.info("✅ 订单{}状态更新为已确认，等待用户确认接单，司机：{}", orderId, order.getDriverName());
+                log.info("✅ 订单{}已分配司机：{}", orderId, order.getDriverName());
             }
             
             // 5. WebSocket推送 DRIVER_REQUEST 弹窗提示（需要用户确认）
@@ -146,14 +157,17 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
             
             String messageJson = JSON.toJSONString(requestMsg);
             
-            // ⭐ 推送给乘客（长辈）
-            nativeWebSocket.sendMessageToUser(userId, messageJson);
-            log.info("✅ 已向乘客 userId={} 推送 DRIVER_REQUEST", userId);
-            
-            // ⭐ 如果是代叫车订单，也推送给代叫人（亲友）
+            // ⭐ 修复：根据订单类型推送给不同用户
             if (order != null && order.getProxyUserId() != null && order.getProxyUserId() > 0) {
+                // 代叫车订单：推送给亲友端（代叫人）
                 nativeWebSocket.sendMessageToUser(order.getProxyUserId(), messageJson);
-                log.info("✅ 已向代叫人 proxyUserId={} 推送 DRIVER_REQUEST", order.getProxyUserId());
+                log.info("✅ 已向亲友端 proxyUserId={} 推送 DRIVER_REQUEST", order.getProxyUserId());
+            } else if (order != null) {
+                // 普通订单：推送给乘车人自己
+                nativeWebSocket.sendMessageToUser(order.getUserId(), messageJson);
+                log.info("✅ 已向乘车人 userId={} 推送 DRIVER_REQUEST", order.getUserId());
+            } else {
+                log.warn("⚠️ 订单{}不存在，无法推送 DRIVER_REQUEST", orderId);
             }
             
         } catch (Exception e) {
@@ -173,8 +187,11 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
             return;
         }
         
-        if (!order.getUserId().equals(userId)) {
-            log.error("无权操作此订单，userId={}, orderId={}", userId, orderId);
+        // ⭐ 修复：允许乘车人或代叫人确认司机
+        if (!order.getUserId().equals(userId) && 
+            (order.getProxyUserId() == null || !order.getProxyUserId().equals(userId))) {
+            log.error("无权操作此订单，userId={}, orderId={}, elderId={}, proxyUserId={}", 
+                userId, orderId, order.getUserId(), order.getProxyUserId());
             return;
         }
         
@@ -207,6 +224,7 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
             acceptedMsg.put("startLng", order.getStartLng());
             acceptedMsg.put("destLat", order.getDestLat());
             acceptedMsg.put("destLng", order.getDestLng());
+            acceptedMsg.put("etaMinutes", 5);  // ⭐ 新增：预计到达时间（分钟）
             
             String messageJson = JSON.toJSONString(acceptedMsg);
             
@@ -329,6 +347,7 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
             arrivedMsg.put("message", "司机已到达上车点，请上车");
             arrivedMsg.put("driverLat", targetLat);
             arrivedMsg.put("driverLng", targetLng);
+            arrivedMsg.put("etaMinutes", 0);  // ⭐ 新增：已到达，ETA为0
             
             String messageJson = JSON.toJSONString(arrivedMsg);
             

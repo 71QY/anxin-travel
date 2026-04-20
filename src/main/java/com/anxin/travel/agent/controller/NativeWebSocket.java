@@ -437,7 +437,7 @@ public class NativeWebSocket {
                 if (session != null && session.isOpen()) {
                     try {
                         session.getBasicRemote().sendText(message);
-                        log.info("✅ WebSocket推送成功：userId={}, messageLength={}", userId, message.length());
+                        // log.debug("✅ WebSocket推送成功：userId={}, messageLength={}", userId, message.length());
                     } catch (Exception e) {
                         log.error("❌ WebSocket推送失败：userId={}", userId, e);
                     }

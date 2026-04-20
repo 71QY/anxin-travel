@@ -138,4 +138,14 @@ public class FamilyGuardController {
         log.info("📞 长辈{}呼叫亲友", elderId);
         return familyGuardService.callGuardian(elderId);
     }
+    
+    /**
+     * API-E1: 获取长辈实时位置（亲友端）
+     */
+    @GetMapping("/elderLocation/{elderId}")
+    public Result<?> getElderLocation(@PathVariable Long elderId) {
+        Long guardianId = UserContext.getUserId();
+        log.info("👨‍👩‍👧 亲友{}查询长辈{}位置", guardianId, elderId);
+        return familyGuardService.getElderLocation(elderId);
+    }
 }

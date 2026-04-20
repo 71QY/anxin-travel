@@ -76,4 +76,11 @@ public interface FamilyGuardService {
      * 呼叫亲友（返回第一个亲友手机号）
      */
     Result<?> callGuardian(Long elderId);
+    
+    /**
+     * 获取长辈实时位置（从 Redis 缓存读取）
+     * @param elderId 长辈用户ID
+     * @return 位置信息 {lat, lng, timestamp}
+     */
+    Result<?> getElderLocation(Long elderId);
 }

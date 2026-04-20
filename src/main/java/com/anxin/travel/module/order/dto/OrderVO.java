@@ -34,4 +34,7 @@ public class OrderVO {
     private Double driverLat;        // 司机当前纬度
     private Double driverLng;        // 司机当前经度
     private Double rating;           // 司机评分（4.8~5.0）
+    
+    // ========== 亲情守护相关字段 ==========
+    private Long guardianUserId;     // 代叫人ID（亲友端视角，用于前端判断是否为代叫订单）
 }

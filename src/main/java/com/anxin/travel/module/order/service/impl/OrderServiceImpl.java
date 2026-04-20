@@ -46,23 +46,57 @@ public class OrderServiceImpl implements OrderService {
         
         String orderNo = generateOrderNo();
         
-        // 【关键】尝试从 Redis 获取用户真实起点位置，如果没有则使用默认值
-        double[] userLocation = getUserCurrentLocation(userId);
-        double startLat = userLocation[0];
-        double startLng = userLocation[1];
+        // 【关键】判断是否为代叫车订单
+        boolean isProxyOrder = request.getElderId() != null && request.getElderId() > 0;
+        Long elderUserId = isProxyOrder ? request.getElderId() : userId;  // 乘车人ID
+        Long proxyUserId = isProxyOrder ? userId : null;  // 代叫人ID
+        
+        // 【关键】确定起点位置：代叫车使用前端传的 startLat/startLng，普通订单从 Redis 获取
+        double startLat, startLng;
+        if (isProxyOrder && request.getStartLat() != null && request.getStartLng() != null) {
+            // 代叫车：使用长辈当前位置作为起点
+            startLat = request.getStartLat();
+            startLng = request.getStartLng();
+            log.info("🚗 代叫车订单：起点=长辈位置({},{})", startLat, startLng);
+        } else {
+            // 普通订单：从 Redis 获取用户位置
+            double[] userLocation = getUserCurrentLocation(userId);
+            startLat = userLocation[0];
+            startLng = userLocation[1];
+        }
         
         // 基于真实起点和终点计算价格
         BigDecimal estimatePrice = calculateEstimatePrice(startLat, startLng, request.getDestLat(), request.getDestLng());
         
+        // ⭐ 校验起点和终点是否相同
+        double latDiff = Math.abs(startLat - request.getDestLat());
+        double lngDiff = Math.abs(startLng - request.getDestLng());
+        if (latDiff < 0.0001 && lngDiff < 0.0001) {
+            log.warn("⚠️ 起点和终点坐标相同：start=({},{}), dest=({},{})", 
+                startLat, startLng, request.getDestLat(), request.getDestLng());
+            throw new RuntimeException("起点和终点不能相同，请重新选择目的地");
+        }
+        
         OrderInfo order = new OrderInfo();
         order.setOrderNo(orderNo);
-        order.setUserId(userId);
+        order.setUserId(elderUserId);  // 乘车人（长辈）
+        order.setProxyUserId(proxyUserId);  // 代叫人（亲友）
+        order.setElderUserId(elderUserId);  // 冗余字段，方便查询
         order.setStartLat(startLat);  // 记录起点
         order.setStartLng(startLng);  // 记录起点
         order.setDestLat(request.getDestLat());
         order.setDestLng(request.getDestLng());
         order.setDestAddress(request.getDestName().trim());
-        order.setStatus(0);
+        
+        // 【关键】设置订单状态：代叫车为 0-待确认，普通订单为 2-等待司机接单
+        if (isProxyOrder) {
+            order.setStatus(0);  // 待长辈确认
+            log.info("📝 创建代叫车订单：orderId={}, elderId={}, proxyId={}", order.getId(), elderUserId, proxyUserId);
+        } else {
+            order.setStatus(2);  // 等待司机接单
+            log.info("📝 创建普通订单：orderId={}, userId={}", order.getId(), userId);
+        }
+        
         order.setPlatformUsed("gaode");
         order.setEstimatePrice(estimatePrice);
         order.setCreateTime(LocalDateTime.now());
@@ -70,34 +104,39 @@ public class OrderServiceImpl implements OrderService {
         int rows = orderMapper.insert(order);
         log.info("订单插入数据库，影响行数：{}, 订单号：{}, ID: {}", rows, orderNo, order.getId());
         
-        // ⭐ 异步分配模拟司机并启动位置推送
-        try {
-            driverAssignmentService.assignDriverAndStartSimulation(
-                order.getId(), userId, startLat, startLng, 
-                request.getDestLat(), request.getDestLng()
-            );
-            log.info("✅ 已触发司机分配任务，orderId={}", order.getId());
-        } catch (Exception e) {
-            log.error("❌ 触发司机分配失败，但订单已创建成功", e);
-        }
-        
-        // ⭐ 延迟10秒后自动模拟司机接单（将订单状态改为5）
-        final Long orderId = order.getId();
-        final double finalStartLat = startLat;
-        final double finalStartLng = startLng;
-        new Thread(() -> {
+        // ⭐ 如果是代叫车订单，推送 NEW_ORDER 消息给长辈
+        if (isProxyOrder) {
             try {
-                Thread.sleep(10000); // 延迟10秒
-                log.info("⏰ 10秒已到，开始自动模拟司机接单，orderId={}", orderId);
-                mockDriverAcceptInternal(orderId, finalStartLat, finalStartLng);
-            } catch (InterruptedException e) {
-                log.error("延迟任务被中断", e);
+                pushNewOrderMessage(order, proxyUserId, elderUserId);
+                log.info("✅ 已向长辈 userId={} 推送 NEW_ORDER 消息", elderUserId);
+            } catch (Exception e) {
+                log.error("❌ 推送 NEW_ORDER 消息失败", e);
             }
-        }, "auto-driver-accept-" + orderId).start();
+        } else {
+            // 普通订单：触发司机分配
+            try {
+                driverAssignmentService.assignDriverAndStartSimulation(
+                    order.getId(), userId, startLat, startLng, 
+                    request.getDestLat(), request.getDestLng()
+                );
+                log.info("✅ 已触发司机分配任务，orderId={}", order.getId());
+            } catch (Exception e) {
+                log.error("❌ 触发司机分配失败，但订单已创建成功", e);
+            }
+            
+            // ⭐ 删除自动接单逻辑，让用户手动确认司机
+            // assignDriverAndStartSimulation 会推送 DRIVER_REQUEST 给用户
+            // 用户需要调用 /api/order/driver/confirm 接口确认或拒绝司机
+        }
         
         OrderVO vo = new OrderVO();
         BeanUtils.copyProperties(order, vo);
         vo.setPoiName(vo.getDestAddress());  // 【关键】前端期望 poiName 字段
+        
+        // ⭐ 亲情守护：设置 guardianUserId（代叫人ID）
+        if (order.getProxyUserId() != null && order.getProxyUserId() > 0) {
+            vo.setGuardianUserId(order.getProxyUserId());
+        }
         
         // ⭐ 生成随机司机信息并填充到返回结果（立即返回给前端）
         Map<String, Object> driverInfo = driverAssignmentService.generateRandomDriverInfo();
@@ -280,6 +319,11 @@ public class OrderServiceImpl implements OrderService {
         BeanUtils.copyProperties(order, vo);
         vo.setPoiName(order.getDestAddress());  // 【修复】设置 poiName 字段，与创建订单时保持一致
         
+        // ⭐ 亲情守护：设置 guardianUserId（代叫人ID）
+        if (order.getProxyUserId() != null && order.getProxyUserId() > 0) {
+            vo.setGuardianUserId(order.getProxyUserId());
+        }
+        
         // ⭐ 如果订单有司机信息，填充到 VO
         if (order.getDriverName() != null) {
             vo.setDriverName(order.getDriverName());
@@ -306,9 +350,12 @@ public class OrderServiceImpl implements OrderService {
         if (order == null) {
             throw new RuntimeException("订单不存在");
         }
-        if (!order.getUserId().equals(userId)) {
+        
+        // ⭐ 修复：只有代叫人（亲友）可以取消订单，乘车人（长辈）不能取消
+        if (order.getProxyUserId() == null || !order.getProxyUserId().equals(userId)) {
             throw new RuntimeException("无权取消他人订单");
         }
+        
         if (order.getStatus() != 0) {
             throw new RuntimeException("当前状态不可取消");
         }
@@ -340,8 +387,11 @@ public class OrderServiceImpl implements OrderService {
         log.info("查询订单列表，userId: {}, status: {}, page: {}, size: {}", userId, status, page, size);
         
         Page<OrderInfo> pageParam = new Page<>(page, size);
+        // ⭐ 亲情守护：允许长辈查看自己作为乘车人的订单 + 作为被代叫人的订单
         LambdaQueryWrapper<OrderInfo> wrapper = new LambdaQueryWrapper<OrderInfo>()
-                .eq(OrderInfo::getUserId, userId)
+                .and(w -> w.eq(OrderInfo::getUserId, userId)
+                        .or()
+                        .eq(OrderInfo::getElderUserId, userId))
                 .eq(status != null, OrderInfo::getStatus, status)
                 .orderByDesc(OrderInfo::getCreateTime);
         
@@ -353,6 +403,11 @@ public class OrderServiceImpl implements OrderService {
             OrderVO vo = new OrderVO();
             BeanUtils.copyProperties(order, vo);
             vo.setPoiName(order.getDestAddress());  // ✅ 设置 poiName 字段（前端期望字段）
+            
+            // ⭐ 亲情守护：设置 guardianUserId（代叫人ID）
+            if (order.getProxyUserId() != null && order.getProxyUserId() > 0) {
+                vo.setGuardianUserId(order.getProxyUserId());
+            }
             
             // ⭐ 如果订单有司机信息，填充到 VO
             if (order.getDriverName() != null) {
@@ -397,6 +452,11 @@ public class OrderServiceImpl implements OrderService {
         OrderVO vo = new OrderVO();
         BeanUtils.copyProperties(order, vo);
         vo.setPoiName(order.getDestAddress());
+        
+        // ⭐ 亲情守护：设置 guardianUserId（代叫人ID）
+        if (order.getProxyUserId() != null && order.getProxyUserId() > 0) {
+            vo.setGuardianUserId(order.getProxyUserId());
+        }
         
         // ⭐ 如果订单有司机信息，填充到 VO
         if (order.getDriverName() != null) {
@@ -453,6 +513,105 @@ public class OrderServiceImpl implements OrderService {
         } catch (Exception e) {
             log.error("❌ WebSocket 推送 TRIP_STARTED 失败，但订单状态已更新", e);
         }
+        
+        // ⭐ 6. 根据实际距离动态计算行驶时间，模拟司机到达目的地
+        final Long finalOrderId = orderId;
+        final Double finalDestLat = order.getDestLat();
+        final Double finalDestLng = order.getDestLng();
+        final Double startLat = order.getStartLat();
+        final Double startLng = order.getStartLng();
+        
+        new Thread(() -> {
+            try {
+                // 1. 计算起点到终点的直线距离（公里）
+                double distanceKm = calculateDistance(startLat, startLng, finalDestLat, finalDestLng);
+                
+                // 2. 根据距离动态计算行驶时间（假设平均时速 30km/h）
+                // 最短 30 秒，最长 180 秒（3分钟）
+                int estimatedDurationSeconds = (int) (distanceKm / 30.0 * 3600);  // 距离/速度=时间（小时）-> 秒
+                estimatedDurationSeconds = Math.max(30, Math.min(180, estimatedDurationSeconds));  // 限制在 30-180 秒
+                
+                log.info("⏰ 开始模拟行程：距离={}km, 预计耗时={}秒, orderId={}", 
+                    String.format("%.2f", distanceKm), estimatedDurationSeconds, finalOrderId);
+                
+                // 3. 分步模拟行驶过程（每 3 秒更新一次位置）
+                int totalSteps = Math.max(5, estimatedDurationSeconds / 3);  // 至少 5 步
+                int stepIntervalMs = (estimatedDurationSeconds * 1000) / totalSteps;  // 每步间隔（毫秒）
+                
+                double currentLat = order.getDriverLat() != null ? order.getDriverLat() : startLat;
+                double currentLng = order.getDriverLng() != null ? order.getDriverLng() : startLng;
+                double latStep = (finalDestLat - currentLat) / totalSteps;
+                double lngStep = (finalDestLng - currentLng) / totalSteps;
+                
+                for (int i = 1; i <= totalSteps; i++) {
+                    Thread.sleep(stepIntervalMs);  // 动态间隔
+                    
+                    // ⭐ 每次更新前检查订单状态，如果状态不再是 5（行程中），立即退出
+                    OrderInfo checkingOrder = orderMapper.selectById(finalOrderId);
+                    if (checkingOrder == null) {
+                        log.warn("⚠️ 订单不存在，终止模拟行驶，orderId={}", finalOrderId);
+                        return;
+                    }
+                    if (checkingOrder.getStatus() != 5) {
+                        log.info("⚠️ 订单状态已变更为 {}（{}），终止模拟行驶，orderId={}", 
+                            checkingOrder.getStatus(), getStatusText(checkingOrder.getStatus()), finalOrderId);
+                        return;
+                    }
+                    
+                    double newLat = currentLat + latStep * i;
+                    double newLng = currentLng + lngStep * i;
+                    
+                    // 更新数据库中的司机位置
+                    OrderInfo updatingOrder = orderMapper.selectById(finalOrderId);
+                    if (updatingOrder != null && updatingOrder.getStatus() == 5) {
+                        updatingOrder.setDriverLat(newLat);
+                        updatingOrder.setDriverLng(newLng);
+                        orderMapper.updateById(updatingOrder);
+                        
+                        // 推送位置更新
+                        int remainingSeconds = (totalSteps - i) * stepIntervalMs / 1000;
+                        Map<String, Object> locationMsg = new HashMap<>();
+                        locationMsg.put("type", "DRIVER_LOCATION");
+                        locationMsg.put("orderId", finalOrderId);
+                        locationMsg.put("driverLat", newLat);
+                        locationMsg.put("driverLng", newLng);
+                        locationMsg.put("etaMinutes", remainingSeconds / 60);  // 剩余分钟数
+                        
+                        String messageJson = JSON.toJSONString(locationMsg);
+                        nativeWebSocket.sendMessageToUser(updatingOrder.getUserId(), messageJson);
+                        
+                        // 如果是代叫车订单，也推送给代叫人
+                        if (updatingOrder.getProxyUserId() != null && updatingOrder.getProxyUserId() > 0) {
+                            nativeWebSocket.sendMessageToUser(updatingOrder.getProxyUserId(), messageJson);
+                        }
+                        
+                        log.debug("📍 行程中位置更新：step={}/{}, lat={}, lng={}, eta={}s", 
+                            i, totalSteps, newLat, newLng, remainingSeconds);
+                    } else {
+                        log.info("⚠️ 订单状态异常，终止位置更新，orderId={}, status={}", 
+                            finalOrderId, updatingOrder != null ? updatingOrder.getStatus() : "null");
+                        return;
+                    }
+                }
+                
+                // ⭐ 最后再次验证状态，确保订单仍然是行程中
+                OrderInfo finalCheck = orderMapper.selectById(finalOrderId);
+                if (finalCheck == null || finalCheck.getStatus() != 5) {
+                    log.info("⚠️ 订单状态已变更，取消自动完成，orderId={}, status={}", 
+                        finalOrderId, finalCheck != null ? finalCheck.getStatus() : "null");
+                    return;
+                }
+                
+                // 到达目的地，自动完成行程
+                log.info("⏰ 行程结束，自动完成订单，orderId={}", finalOrderId);
+                completeOrder(finalOrderId, order.getUserId());
+                
+            } catch (InterruptedException e) {
+                log.error("❌ 模拟行驶被中断，orderId={}", finalOrderId, e);
+            } catch (Exception e) {
+                log.error("❌ 模拟行驶失败，orderId={}", finalOrderId, e);
+            }
+        }, "trip-simulation-" + orderId).start();
     }
     
     @Override
@@ -564,6 +723,53 @@ public class OrderServiceImpl implements OrderService {
     }
     
     /**
+     * ⭐ 推送 NEW_ORDER 消息给长辈（代叫车订单创建后）
+     */
+    private void pushNewOrderMessage(OrderInfo order, Long proxyUserId, Long elderUserId) {
+        try {
+            // 1. 获取代叫人姓名（从数据库查询）
+            String proxyUserName = "亲友";
+            try {
+                com.anxin.travel.module.user.mapper.UserMapper userMapper = 
+                    com.anxin.travel.common.util.SpringContextUtil.getBean(com.anxin.travel.module.user.mapper.UserMapper.class);
+                var proxyUser = userMapper.selectById(proxyUserId);
+                if (proxyUser != null && proxyUser.getNickname() != null) {
+                    proxyUserName = proxyUser.getNickname();
+                }
+            } catch (Exception e) {
+                log.warn("获取代叫人姓名失败，使用默认值", e);
+            }
+            
+            // 2. 构建消息
+            Map<String, Object> message = new HashMap<>();
+            message.put("type", "NEW_ORDER");
+            message.put("orderId", order.getId());
+            message.put("orderNo", order.getOrderNo());  // ⭐ 新增：订单号
+            message.put("proxyUserId", proxyUserId);
+            message.put("proxyUserName", proxyUserName);
+            message.put("destAddress", order.getDestAddress());
+            message.put("poiName", order.getDestAddress());  // ⭐ 新增：目的地名称（与destAddress相同）
+            message.put("destLat", order.getDestLat());
+            message.put("destLng", order.getDestLng());
+            message.put("startLat", order.getStartLat());
+            message.put("startLng", order.getStartLng());
+            message.put("estimatePrice", order.getEstimatePrice());
+            message.put("elderUserId", elderUserId);  // ⭐ 新增：长辈用户ID
+            message.put("timestamp", System.currentTimeMillis());
+            
+            String messageJson = JSON.toJSONString(message);
+            
+            // 3. 推送给长辈
+            nativeWebSocket.sendMessageToUser(elderUserId, messageJson);
+            log.info("✅ 已向长辈 userId={} 推送 NEW_ORDER：orderId={}, proxyUser={}", 
+                elderUserId, order.getId(), proxyUserName);
+            
+        } catch (Exception e) {
+            log.error("❌ 推送 NEW_ORDER 消息失败", e);
+        }
+    }
+    
+    /**
      * 【测试接口】模拟司机接单
      * 将订单状态改为5（行程中），并设置司机信息
      */
@@ -594,21 +800,26 @@ public class OrderServiceImpl implements OrderService {
             // 2. 生成随机司机信息
             Map<String, Object> driverInfo = driverAssignmentService.generateRandomDriverInfo();
             
-            // 3. 更新订单状态为5（行程中），并设置司机信息
-            order.setStatus(5);
+            // 3. 更新订单状态为3（司机已接单），并设置司机信息
+            order.setStatus(3);  // ⭐ 修正：先设置为3（司机已接单）
             order.setDriverName((String) driverInfo.get("driverName"));
             order.setDriverPhone((String) driverInfo.get("driverPhone"));
             order.setCarNo((String) driverInfo.get("carNo"));
             order.setCarType((String) driverInfo.get("carType"));
             order.setCarColor((String) driverInfo.get("carColor"));
-            order.setRating((Double) driverInfo.get("rating"));
+            Object ratingObj = driverInfo.get("rating");
+            if (ratingObj != null) {
+                order.setRating(ratingObj instanceof BigDecimal ? (BigDecimal) ratingObj : BigDecimal.valueOf((Double) ratingObj));
+            }
             
             // 4. 设置司机位置（起点附近）
             Random random = new Random();
             double offsetLat = (random.nextDouble() - 0.5) * 0.01;
             double offsetLng = (random.nextDouble() - 0.5) * 0.01;
-            order.setDriverLat(startLat + offsetLat);
-            order.setDriverLng(startLng + offsetLng);
+            double driverLat = startLat + offsetLat;
+            double driverLng = startLng + offsetLng;
+            order.setDriverLat(driverLat);
+            order.setDriverLng(driverLng);
             
             // 5. 获取一个真实司机ID
             try {
@@ -623,7 +834,112 @@ public class OrderServiceImpl implements OrderService {
             }
             
             orderMapper.updateById(order);
-            log.info("✅ 订单{}已自动接单，status=5, driver={}", orderId, order.getDriverName());
+            log.info("✅ 订单{}已自动接单，status=3, driver={}", orderId, order.getDriverName());
+            
+            // 6. ⭐ 推送 ORDER_ACCEPTED 消息给前端
+            Map<String, Object> acceptedMsg = new HashMap<>();
+            acceptedMsg.put("type", "ORDER_ACCEPTED");
+            acceptedMsg.put("orderId", orderId);
+            acceptedMsg.put("success", true);
+            acceptedMsg.put("message", "司机已接单，正在赶来");
+            acceptedMsg.put("driverName", order.getDriverName());
+            acceptedMsg.put("driverPhone", order.getDriverPhone());
+            acceptedMsg.put("driverAvatar", "https://api.dicebear.com/7.x/avataaars/svg?seed=" + order.getDriverName());
+            acceptedMsg.put("carNo", order.getCarNo());
+            acceptedMsg.put("carType", order.getCarType());
+            acceptedMsg.put("carColor", order.getCarColor());
+            acceptedMsg.put("rating", order.getRating() != null ? order.getRating().doubleValue() : 4.9);
+            acceptedMsg.put("driverLat", driverLat);
+            acceptedMsg.put("driverLng", driverLng);
+            acceptedMsg.put("startLat", order.getStartLat());
+            acceptedMsg.put("startLng", order.getStartLng());
+            acceptedMsg.put("destLat", order.getDestLat());
+            acceptedMsg.put("destLng", order.getDestLng());
+            acceptedMsg.put("etaMinutes", 5);  // ⭐ 新增：预计到达时间（分钟）
+            
+            String messageJson = JSON.toJSONString(acceptedMsg);
+            
+            // 推送给乘车人（长辈）
+            nativeWebSocket.sendMessageToUser(order.getUserId(), messageJson);
+            log.info("✅ 已向乘车人 userId={} 推送 ORDER_ACCEPTED", order.getUserId());
+            
+            // 如果是代叫车订单，也推送给代叫人（亲友）
+            if (order.getProxyUserId() != null && order.getProxyUserId() > 0) {
+                nativeWebSocket.sendMessageToUser(order.getProxyUserId(), messageJson);
+                log.info("✅ 已向代叫人 proxyUserId={} 推送 ORDER_ACCEPTED", order.getProxyUserId());
+            }
+            
+            // 7. ⭐ 启动异步任务：模拟司机驶向起点 -> 到达 -> 乘客上车 -> 行程中
+            final Long finalOrderId = orderId;
+            final double finalDriverLat = driverLat;
+            final double finalDriverLng = driverLng;
+            new Thread(() -> {
+                try {
+                    // 阶段1：模拟司机驶向起点（分5步，每3秒一次）
+                    int steps = 5;
+                    double latStep = (startLat - finalDriverLat) / steps;
+                    double lngStep = (startLng - finalDriverLng) / steps;
+                    
+                    for (int i = 1; i <= steps; i++) {
+                        Thread.sleep(3000);  // 每3秒更新一次
+                        
+                        double newLat = finalDriverLat + latStep * i;
+                        double newLng = finalDriverLng + lngStep * i;
+                        
+                        // 推送 DRIVER_LOCATION
+                        Map<String, Object> locationMsg = new HashMap<>();
+                        locationMsg.put("type", "DRIVER_LOCATION");
+                        locationMsg.put("orderId", finalOrderId);
+                        locationMsg.put("driverLat", newLat);
+                        locationMsg.put("driverLng", newLng);
+                        locationMsg.put("etaMinutes", steps - i);
+                        
+                        String locationJson = JSON.toJSONString(locationMsg);
+                        
+                        OrderInfo currentOrder = orderMapper.selectById(finalOrderId);
+                        if (currentOrder != null) {
+                            nativeWebSocket.sendMessageToUser(currentOrder.getUserId(), locationJson);
+                            if (currentOrder.getProxyUserId() != null && currentOrder.getProxyUserId() > 0) {
+                                nativeWebSocket.sendMessageToUser(currentOrder.getProxyUserId(), locationJson);
+                            }
+                        }
+                        
+                        log.debug("📍 推送司机位置：step={}/{}, lat={}, lng={}", i, steps, newLat, newLng);
+                    }
+                    
+                    // 阶段2：司机到达起点，推送 DRIVER_ARRIVED
+                    Thread.sleep(1000);
+                    Map<String, Object> arrivedMsg = new HashMap<>();
+                    arrivedMsg.put("type", "DRIVER_ARRIVED");
+                    arrivedMsg.put("orderId", finalOrderId);
+                    arrivedMsg.put("message", "司机已到达上车点，请上车");
+                    arrivedMsg.put("driverLat", startLat);
+                    arrivedMsg.put("driverLng", startLng);
+                    arrivedMsg.put("etaMinutes", 0);  // ⭐ 新增：已到达，ETA为0
+                    
+                    String arrivedJson = JSON.toJSONString(arrivedMsg);
+                    
+                    OrderInfo orderAfterArrival = orderMapper.selectById(finalOrderId);
+                    if (orderAfterArrival != null) {
+                        nativeWebSocket.sendMessageToUser(orderAfterArrival.getUserId(), arrivedJson);
+                        if (orderAfterArrival.getProxyUserId() != null && orderAfterArrival.getProxyUserId() > 0) {
+                            nativeWebSocket.sendMessageToUser(orderAfterArrival.getProxyUserId(), arrivedJson);
+                        }
+                        
+                        // 更新订单状态为4（司机已到达）
+                        orderAfterArrival.setStatus(4);
+                        orderAfterArrival.setDriverLat(startLat);
+                        orderAfterArrival.setDriverLng(startLng);
+                        orderMapper.updateById(orderAfterArrival);
+                        log.info("✅ 订单{}状态更新为司机已到达（status=4）", finalOrderId);
+                    }
+                    
+                    log.info("✅ 司机已到达上车点，orderId={}", finalOrderId);
+                    
+                } catch (Exception e) {
+                    log.error("❌ 自动接单后续流程失败，orderId={}", finalOrderId, e);
+                }
+            }, "auto-driver-movement-" + orderId).start();
             
         } catch (Exception e) {
             log.error("❌ 自动接单失败，orderId={}", orderId, e);

@@ -495,7 +495,25 @@ public class FamilyGuardServiceImpl implements FamilyGuardService {
             needConfirm = true;
         }
 
-        // 3. 创建订单
+        // 3. ⭐ 校验起点和终点坐标
+        if (request.getStartLat() == null || request.getStartLng() == null) {
+            return Result.error("起点坐标不能为空");
+        }
+        if (request.getDestLat() == null || request.getDestLng() == null) {
+            return Result.error("终点坐标不能为空");
+        }
+        
+        // 检查起点和终点是否相同（允许0.0001度误差，约10米）
+        double latDiff = Math.abs(request.getStartLat() - request.getDestLat());
+        double lngDiff = Math.abs(request.getStartLng() - request.getDestLng());
+        if (latDiff < 0.0001 && lngDiff < 0.0001) {
+            log.warn("⚠️ 起点和终点坐标相同：start=({},{}), dest=({},{})", 
+                request.getStartLat(), request.getStartLng(), 
+                request.getDestLat(), request.getDestLng());
+            return Result.error("起点和终点不能相同，请重新选择目的地");
+        }
+        
+        // 4. 创建订单
         OrderInfo order = new OrderInfo();
         order.setOrderNo("AX" + System.currentTimeMillis() + new Random().nextInt(9000) + 1000);
         order.setUserId(request.getElderId());  // 实际乘车人
@@ -505,6 +523,10 @@ public class FamilyGuardServiceImpl implements FamilyGuardService {
         order.setStartLng(request.getStartLng());
         order.setDestLat(request.getDestLat());
         order.setDestLng(request.getDestLng());
+        
+        log.info("✅ 订单坐标：起点=({},{}), 终点=({},{})", 
+            request.getStartLat(), request.getStartLng(),
+            request.getDestLat(), request.getDestLng());
         
         // ⭐ 处理 destAddress 为空的情况（使用坐标作为兜底）
         String destAddress = request.getDestAddress();
@@ -554,7 +576,10 @@ public class FamilyGuardServiceImpl implements FamilyGuardService {
             orderData.put("orderNo", order.getOrderNo());
             orderData.put("status", order.getStatus());
             orderData.put("userId", request.getElderId());
+            orderData.put("elderUserId", request.getElderId());  // ⭐ 新增：长辈用户ID（前端期望字段）
             orderData.put("guardianUserId", guardianId);
+            orderData.put("startLat", request.getStartLat());  // ⭐ 新增：起点纬度
+            orderData.put("startLng", request.getStartLng());  // ⭐ 新增：起点经度
             orderData.put("destLat", request.getDestLat());
             orderData.put("destLng", request.getDestLng());
             orderData.put("poiName", destAddress);
@@ -601,7 +626,10 @@ public class FamilyGuardServiceImpl implements FamilyGuardService {
             orderData.put("orderNo", order.getOrderNo());
             orderData.put("status", order.getStatus());
             orderData.put("userId", request.getElderId());
+            orderData.put("elderUserId", request.getElderId());  // ⭐ 新增：长辈用户ID（前端期望字段）
             orderData.put("guardianUserId", guardianId);
+            orderData.put("startLat", request.getStartLat());  // ⭐ 新增：起点纬度
+            orderData.put("startLng", request.getStartLng());  // ⭐ 新增：起点经度
             orderData.put("destLat", request.getDestLat());
             orderData.put("destLng", request.getDestLng());
             orderData.put("poiName", destAddress);
@@ -677,6 +705,7 @@ public class FamilyGuardServiceImpl implements FamilyGuardService {
             // ⭐ 构建通知消息
             Map<String, Object> notifyData = new HashMap<>();
             notifyData.put("type", "PROXY_ORDER_CONFIRMED");
+            notifyData.put("userId", elderId);  // ⭐ 新增：统一字段（前端期望）
             notifyData.put("orderId", orderId);
             notifyData.put("elderUserId", elderId);
             notifyData.put("confirmed", true);
@@ -718,6 +747,7 @@ public class FamilyGuardServiceImpl implements FamilyGuardService {
             // ⭐ 构建通知消息
             Map<String, Object> notifyData = new HashMap<>();
             notifyData.put("type", "PROXY_ORDER_CONFIRMED");
+            notifyData.put("userId", elderId);  // ⭐ 新增：统一字段（前端期望）
             notifyData.put("orderId", orderId);
             notifyData.put("elderUserId", elderId);
             notifyData.put("confirmed", false);
@@ -779,5 +809,37 @@ public class FamilyGuardServiceImpl implements FamilyGuardService {
         data.put("guardianName", first.getGuardianName());
         
         return Result.success(data);
+    }
+    
+    @Override
+    public Result<?> getElderLocation(Long elderId) {
+        log.info("📍 获取长辈{}实时位置", elderId);
+        
+        try {
+            // 1. 从 Redis 缓存读取长辈最新位置（key: user_{elderId}）
+            com.anxin.travel.agent.service.MemoryService memoryService = 
+                com.anxin.travel.common.util.SpringContextUtil.getBean(com.anxin.travel.agent.service.MemoryService.class);
+            
+            double[] location = memoryService.getLocation("user_" + elderId);
+            
+            if (location == null || location.length < 2) {
+                log.warn("⚠️ 未找到长辈{}的位置信息", elderId);
+                return Result.error("暂无位置信息，请确保长辈已开启位置共享");
+            }
+            
+            // 2. 构建响应数据
+            Map<String, Object> data = new HashMap<>();
+            data.put("lat", location[0]);
+            data.put("lng", location[1]);
+            data.put("timestamp", System.currentTimeMillis());
+            data.put("elderId", elderId);
+            
+            log.info("✅ 获取长辈位置成功：lat={}, lng={}", location[0], location[1]);
+            return Result.success(data);
+            
+        } catch (Exception e) {
+            log.error("❌ 获取长辈位置失败", e);
+            return Result.error("获取位置失败：" + e.getMessage());
+        }
     }
 }

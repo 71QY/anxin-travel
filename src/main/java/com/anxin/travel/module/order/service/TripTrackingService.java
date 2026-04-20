@@ -43,6 +43,7 @@ public class TripTrackingService {
 
     /**
      * 每 5 秒推送一次行程中订单的司机位置
+     * ⚠️ 注意：此定时任务仅作为备用机制，主要依赖 OrderServiceImpl.boardOrder 中的异步模拟
      */
     @Scheduled(fixedRate = 5000)
     public void pushDriverLocationDuringTrip() {
@@ -57,10 +58,11 @@ public class TripTrackingService {
                 return;
             }
 
-            log.debug("📍 开始推送 {} 个行程中订单的位置", activeOrders.size());
+            log.debug("📍 [定时任务] 检查 {} 个行程中订单", activeOrders.size());
 
             for (OrderInfo order : activeOrders) {
                 try {
+                    // ⭐ 只推送，不更新位置（位置由 boardOrder 的异步线程负责更新）
                     pushSingleOrderLocation(order);
                 } catch (Exception e) {
                     log.error("❌ 推送订单{}位置失败", order.getId(), e);
