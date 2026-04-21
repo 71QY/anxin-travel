@@ -318,14 +318,23 @@ public class NativeWebSocket {
         if (result instanceof com.anxin.travel.agent.dto.AgentResponse) {
             com.anxin.travel.agent.dto.AgentResponse agentResponse = (com.anxin.travel.agent.dto.AgentResponse) result;
             
-            // 设置 type（转为小写）
-            String responseType = agentResponse.getType() != null ? agentResponse.getType().toLowerCase() : "chat_reply";
+            // ⭐ 特殊处理：图片识别保持大写 IMAGE_RECOGNITION，其他类型转小写
+            String originalType = agentResponse.getType() != null ? agentResponse.getType() : "CHAT";
+            String responseType;
+            if ("IMAGE_RESULT".equalsIgnoreCase(originalType)) {
+                // 图片识别：保持大写（前端期望）
+                responseType = "IMAGE_RECOGNITION";
+            } else {
+                // 其他类型：转小写
+                responseType = originalType.toLowerCase();
+            }
+            
             response.put("type", responseType);
             response.put("success", agentResponse.getSuccess() != null ? agentResponse.getSuccess() : true);
             response.put("message", agentResponse.getMessage() != null ? agentResponse.getMessage() : "");
             
             // 根据类型构建不同的响应结构
-            if ("image_result".equals(responseType)) {
+            if ("image_result".equals(responseType.toLowerCase()) || "IMAGE_RECOGNITION".equals(responseType)) {
                 // ✅ 图片识别响应：包含 ocrText、places/order/message
                 response.put("data", agentResponse.getData());
                 

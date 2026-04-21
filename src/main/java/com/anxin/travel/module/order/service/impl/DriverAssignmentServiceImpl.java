@@ -151,6 +151,7 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
             // 5. WebSocket推送 DRIVER_REQUEST 弹窗提示（需要用户确认）
             Map<String, Object> requestMsg = new HashMap<>();
             requestMsg.put("type", "DRIVER_REQUEST");
+            requestMsg.put("userId", order != null ? (order.getProxyUserId() != null && order.getProxyUserId() > 0 ? order.getProxyUserId() : order.getUserId()) : userId);  // ⭐ 新增：顶层 userId 字段
             requestMsg.put("success", true);
             requestMsg.put("message", "有司机接单，是否允许该司机接单？");
             requestMsg.putAll(driverInfo);
@@ -179,7 +180,14 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
      * 用户确认/拒绝司机接单
      */
     public void confirmDriverAcceptance(Long orderId, Long userId, boolean accepted) {
-        log.info("用户{}确认订单{}的司机接单，accepted={}", userId, orderId, accepted);
+        log.info("🔍 【重要】confirmDriverAcceptance 被调用：userId={}, orderId={}, accepted={}", userId, orderId, accepted);
+        
+        // ⭐ 打印调用栈，追踪是谁调用了这个方法
+        StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
+        log.info("📞 调用栈：");
+        for (int i = 0; i < Math.min(5, stackTrace.length); i++) {
+            log.info("   {} -> {}", i, stackTrace[i]);
+        }
         
         OrderInfo order = orderMapper.selectById(orderId);
         if (order == null) {
@@ -216,6 +224,7 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
             // 推送 ORDER_ACCEPTED
             Map<String, Object> acceptedMsg = new HashMap<>();
             acceptedMsg.put("type", "ORDER_ACCEPTED");
+            acceptedMsg.put("userId", userId);  // ⭐ 新增：顶层 userId 字段
             acceptedMsg.put("orderId", orderId);
             acceptedMsg.put("success", true);
             acceptedMsg.put("message", "司机已接单，正在赶来");
@@ -228,14 +237,17 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
             
             String messageJson = JSON.toJSONString(acceptedMsg);
             
-            // ⭐ 推送给乘客（长辈）
-            nativeWebSocket.sendMessageToUser(userId, messageJson);
-            log.info("✅ 已向乘客 userId={} 推送 ORDER_ACCEPTED", userId);
+            // ⭐ 推送给乘客（长辈）- 使用订单中的 userId（乘车人）
+            Long passengerUserId = order.getUserId();
+            log.info("📤 准备推送 ORDER_ACCEPTED：orderId={}, passengerUserId={}, proxyUserId={}", 
+                orderId, passengerUserId, order.getProxyUserId());
+            nativeWebSocket.sendMessageToUser(passengerUserId, messageJson);
+            log.info("✅ 已向乘客（长辈）userId={} 推送 ORDER_ACCEPTED", passengerUserId);
             
             // ⭐ 如果是代叫车订单，也推送给代叫人（亲友）
             if (order.getProxyUserId() != null && order.getProxyUserId() > 0) {
                 nativeWebSocket.sendMessageToUser(order.getProxyUserId(), messageJson);
-                log.info("✅ 已向代叫人 proxyUserId={} 推送 ORDER_ACCEPTED", order.getProxyUserId());
+                log.info("✅ 已向代叫人（亲友）proxyUserId={} 推送 ORDER_ACCEPTED", order.getProxyUserId());
             }
             
             // 开始模拟车辆行驶
@@ -258,6 +270,7 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
             // 推送拒绝消息
             Map<String, Object> rejectedMsg = new HashMap<>();
             rejectedMsg.put("type", "DRIVER_REJECTED");
+            rejectedMsg.put("userId", userId);  // ⭐ 新增：顶层 userId 字段
             rejectedMsg.put("orderId", orderId);
             rejectedMsg.put("success", true);
             rejectedMsg.put("message", "您已拒绝该司机，正在为您重新派单");
@@ -320,6 +333,7 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
                 // 推送位置更新
                 Map<String, Object> locationMsg = new HashMap<>();
                 locationMsg.put("type", "DRIVER_LOCATION");
+                locationMsg.put("userId", userId);  // ⭐ 新增：顶层 userId 字段
                 locationMsg.put("orderId", orderId);
                 locationMsg.put("driverLat", newLat);
                 locationMsg.put("driverLng", newLng);
@@ -327,15 +341,20 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
                 
                 String messageJson = JSON.toJSONString(locationMsg);
                 
-                // ⭐ 推送给乘客（长辈）
-                nativeWebSocket.sendMessageToUser(userId, messageJson);
-                
-                // ⭐ 如果是代叫车订单，也推送给代叫人（亲友）
+                // ⭐ 推送给乘客（长辈）和代叫人（亲友）
                 OrderInfo order = orderMapper.selectById(orderId);
-                if (order != null && order.getProxyUserId() != null && order.getProxyUserId() > 0) {
-                    nativeWebSocket.sendMessageToUser(order.getProxyUserId(), messageJson);
+                if (order != null) {
+                    // 推送给乘车人（长辈）
+                    nativeWebSocket.sendMessageToUser(order.getUserId(), messageJson);
+                    log.debug("📍 已向乘客（长辈）userId={} 推送司机位置", order.getUserId());
+                    
+                    // 如果是代叫车订单，也推送给代叫人（亲友）
+                    if (order.getProxyUserId() != null && order.getProxyUserId() > 0) {
+                        nativeWebSocket.sendMessageToUser(order.getProxyUserId(), messageJson);
+                        log.debug("📍 已向代叫人（亲友）proxyUserId={} 推送司机位置", order.getProxyUserId());
+                    }
                 }
-                
+
                 log.debug("📍 推送司机位置：step={}/{}, lat={}, lng={}", i, steps, newLat, newLng);
             }
             
@@ -343,6 +362,7 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
             Thread.sleep(1000);
             Map<String, Object> arrivedMsg = new HashMap<>();
             arrivedMsg.put("type", "DRIVER_ARRIVED");
+            arrivedMsg.put("userId", userId);  // ⭐ 新增：顶层 userId 字段
             arrivedMsg.put("orderId", orderId);
             arrivedMsg.put("message", "司机已到达上车点，请上车");
             arrivedMsg.put("driverLat", targetLat);
@@ -351,15 +371,18 @@ public class DriverAssignmentServiceImpl implements DriverAssignmentService {
             
             String messageJson = JSON.toJSONString(arrivedMsg);
             
-            // ⭐ 推送给乘客（长辈）
-            nativeWebSocket.sendMessageToUser(userId, messageJson);
-            log.info("✅ 已向乘客 userId={} 推送 DRIVER_ARRIVED", userId);
-            
-            // ⭐ 如果是代叫车订单，也推送给代叫人（亲友）
+            // ⭐ 推送给乘客（长辈）和代叫人（亲友）
             OrderInfo order = orderMapper.selectById(orderId);
-            if (order != null && order.getProxyUserId() != null && order.getProxyUserId() > 0) {
-                nativeWebSocket.sendMessageToUser(order.getProxyUserId(), messageJson);
-                log.info("✅ 已向代叫人 proxyUserId={} 推送 DRIVER_ARRIVED", order.getProxyUserId());
+            if (order != null) {
+                // 推送给乘车人（长辈）
+                nativeWebSocket.sendMessageToUser(order.getUserId(), messageJson);
+                log.info("✅ 已向乘客（长辈）userId={} 推送 DRIVER_ARRIVED", order.getUserId());
+                
+                // 如果是代叫车订单，也推送给代叫人（亲友）
+                if (order.getProxyUserId() != null && order.getProxyUserId() > 0) {
+                    nativeWebSocket.sendMessageToUser(order.getProxyUserId(), messageJson);
+                    log.info("✅ 已向代叫人（亲友）proxyUserId={} 推送 DRIVER_ARRIVED", order.getProxyUserId());
+                }
             }
             
             log.info("✅ 司机已到达上车点，orderId={}", orderId);

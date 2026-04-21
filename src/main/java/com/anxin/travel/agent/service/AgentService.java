@@ -1455,22 +1455,38 @@ public class AgentService {
             boolean isAddressImage = false;
             
             if (extractedText != null && !extractedText.trim().isEmpty() && !extractedText.contains("未识别到")) {
-                // 1. 包含明确的地址关键词
-                boolean hasAddressKeyword = extractedText.contains("路") || extractedText.contains("街") 
-                    || extractedText.contains("号") || extractedText.contains("市")
-                    || extractedText.contains("区") || extractedText.contains("省")
-                    || extractedText.contains("县") || extractedText.contains("镇")
-                    || extractedText.contains("村") || extractedText.contains("乡")
-                    || extractedText.contains("道") || extractedText.contains("巷");
+                String trimmedText = extractedText.trim();
                 
-                // 2. 或者 AI 意图识别为 SEARCH（知名地标、POI名称等）
-                AgentIntent tempIntent = parseIntentWithAI(extractedText);
-                boolean isSearchIntent = tempIntent != null && "SEARCH".equals(tempIntent.getType());
+                // ⭐ 先排除明显的非地址场景（水印、签名、版权信息等）
+                boolean isNonAddressPattern = trimmedText.length() <= 10 && (
+                    trimmedText.contains("水印") || 
+                    trimmedText.contains("版权所有") || 
+                    trimmedText.contains("©") ||
+                    trimmedText.contains("@") ||
+                    trimmedText.contains("http") ||
+                    trimmedText.contains("www")
+                );
                 
-                isAddressImage = hasAddressKeyword || isSearchIntent;
-                
-                log.info("🔍 地址类图片判断：hasAddressKeyword={}, isSearchIntent={}, isAddressImage={}", 
-                    hasAddressKeyword, isSearchIntent, isAddressImage);
+                if (!isNonAddressPattern) {
+                    // 1. 包含明确的地址关键词
+                    boolean hasAddressKeyword = trimmedText.contains("路") || trimmedText.contains("街") 
+                        || trimmedText.contains("号") || trimmedText.contains("市")
+                        || trimmedText.contains("区") || trimmedText.contains("省")
+                        || trimmedText.contains("县") || trimmedText.contains("镇")
+                        || trimmedText.contains("村") || trimmedText.contains("乡")
+                        || trimmedText.contains("道") || trimmedText.contains("巷");
+                    
+                    // 2. 或者 AI 意图识别为 SEARCH（知名地标、POI名称等）
+                    AgentIntent tempIntent = parseIntentWithAI(trimmedText);
+                    boolean isSearchIntent = tempIntent != null && "SEARCH".equals(tempIntent.getType());
+                    
+                    isAddressImage = hasAddressKeyword || isSearchIntent;
+                    
+                    log.info("🔍 地址类图片判断：text='{}', hasAddressKeyword={}, isSearchIntent={}, isAddressImage={}", 
+                        trimmedText, hasAddressKeyword, isSearchIntent, isAddressImage);
+                } else {
+                    log.info("🚫 检测到非地址模式（水印/签名等），跳过地址判断：text='{}'", trimmedText);
+                }
             }
             
             AgentResponse response;
@@ -1533,21 +1549,35 @@ public class AgentService {
                 
                 // 构建响应
                 response = new AgentResponse();
-                response.setType("IMAGE_RESULT");
+                response.setType("SEARCH");  // ⭐ 关键修复：使用 SEARCH 类型，让前端知道可以确认选择
                 response.setSuccess(true);
-                response.setMessage("图片识别成功");
                 
                 Map<String, Object> data = new HashMap<>();
                 data.put("ocrText", extractedText);
                 
                 if (execResult.getPlaces() != null && !execResult.getPlaces().isEmpty()) {
+                    // ✅ 找到地点
                     data.put("places", execResult.getPlaces());
                     response.setPlaces(execResult.getPlaces());
+                    response.setMessage("识别到地标：" + extractedText + "，为您找到以下地点");
                     log.info("✅ 找到 {} 个地点", execResult.getPlaces().size());
                 } else if (execResult.getOrderData() != null) {
+                    // 订单数据
                     data.put("order", execResult.getOrderData());
+                    response.setMessage("已确认目的地，正在创建订单");
                 } else {
-                    data.put("message", execResult.getMessage() != null ? execResult.getMessage() : "未找到相关地点");
+                    // ⭐ 未找到地点：返回友好的提示消息
+                    String friendlyMessage;
+                    if (extractedText != null && !extractedText.trim().isEmpty() && !extractedText.contains("未识别到")) {
+                        // 有OCR文字但不是地址
+                        friendlyMessage = "识别到文字：\"" + extractedText + "\"，但这似乎不是一个有效的地址。您可以尝试拍摄路牌、门牌号或地标建筑。";
+                    } else {
+                        // OCR识别失败
+                        friendlyMessage = "未能从图片中识别到有效地址信息。建议：\n• 确保图片清晰，光线充足\n• 拍摄路牌、门牌号等包含地址的文字\n• 尝试拍摄更近的视角";
+                    }
+                    data.put("message", friendlyMessage);
+                    response.setMessage(friendlyMessage);
+                    log.info("⚠️ 未找到地点，返回友好提示");
                 }
                 
                 response.setData(data);

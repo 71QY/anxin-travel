@@ -503,14 +503,17 @@ public class FamilyGuardServiceImpl implements FamilyGuardService {
             return Result.error("终点坐标不能为空");
         }
         
-        // 检查起点和终点是否相同（允许0.0001度误差，约10米）
+        // 检查起点和终点是否相同（允许0.0005度误差，约50米）
         double latDiff = Math.abs(request.getStartLat() - request.getDestLat());
         double lngDiff = Math.abs(request.getStartLng() - request.getDestLng());
-        if (latDiff < 0.0001 && lngDiff < 0.0001) {
-            log.warn("⚠️ 起点和终点坐标相同：start=({},{}), dest=({},{})", 
+        if (latDiff < 0.0005 && lngDiff < 0.0005) {
+            log.warn("⚠️ 起点和终点距离过近（<50米）：start=({},{}), dest=({},{})，自动调整起点", 
                 request.getStartLat(), request.getStartLng(), 
                 request.getDestLat(), request.getDestLng());
-            return Result.error("起点和终点不能相同，请重新选择目的地");
+            
+            // ⭐ 自动微调起点坐标（向北偏移约100米）
+            request.setStartLat(request.getStartLat() + 0.001);
+            log.info("✅ 已自动调整起点：newStartLat={}", request.getStartLat());
         }
         
         // 4. 创建订单
@@ -562,42 +565,55 @@ public class FamilyGuardServiceImpl implements FamilyGuardService {
         systemMsg.setContent("亲友" + guard.getGuardianName() + "为您代叫车辆，目的地：" + destAddress);
         orderChatMapper.insert(systemMsg);
 
-        // 5. WebSocket推送给长辈（按前端文档要求的格式）
-        Map<String, Object> pushData = new HashMap<>();
+        // 5. WebSocket推送消息
         if (needConfirm) {
-            // ⭐ 推送确认请求 - 使用 ORDER_CREATED 类型
-            pushData.put("type", "ORDER_CREATED");
-            pushData.put("success", true);
-            pushData.put("message", "您的亲友" + guard.getGuardianName() + "为您叫了一辆车");
+            // ⭐⭐⭐ 推送给长辈端：ORDER_CREATED（显示确认按钮）
+            Map<String, Object> elderPushData = new HashMap<>();
+            elderPushData.put("type", "ORDER_CREATED");
+            elderPushData.put("success", true);
+            elderPushData.put("message", "您的亲友" + guard.getGuardianName() + "为您叫了一辆车");
             
-            // data 字段包含完整订单信息
-            Map<String, Object> orderData = new HashMap<>();
-            orderData.put("orderId", order.getId());
-            orderData.put("orderNo", order.getOrderNo());
-            orderData.put("status", order.getStatus());
-            orderData.put("userId", request.getElderId());
-            orderData.put("elderUserId", request.getElderId());  // ⭐ 新增：长辈用户ID（前端期望字段）
-            orderData.put("guardianUserId", guardianId);
-            orderData.put("startLat", request.getStartLat());  // ⭐ 新增：起点纬度
-            orderData.put("startLng", request.getStartLng());  // ⭐ 新增：起点经度
-            orderData.put("destLat", request.getDestLat());
-            orderData.put("destLng", request.getDestLng());
-            orderData.put("poiName", destAddress);
-            orderData.put("destAddress", destAddress);
-            orderData.put("estimatePrice", 0.0);  // TODO: 后续补充价格预估
-            orderData.put("createTime", LocalDateTime.now().toString());
-            orderData.put("requesterName", guard.getGuardianName());
-            orderData.put("destination", destAddress);
+            Map<String, Object> elderOrderData = new HashMap<>();
+            elderOrderData.put("orderId", order.getId());
+            elderOrderData.put("orderNo", order.getOrderNo());
+            elderOrderData.put("status", order.getStatus());
+            elderOrderData.put("userId", request.getElderId());
+            elderOrderData.put("elderUserId", request.getElderId());
+            elderOrderData.put("guardianUserId", guardianId);
+            elderOrderData.put("startLat", request.getStartLat());
+            elderOrderData.put("startLng", request.getStartLng());
+            elderOrderData.put("destLat", request.getDestLat());
+            elderOrderData.put("destLng", request.getDestLng());
+            elderOrderData.put("poiName", destAddress);
+            elderOrderData.put("destAddress", destAddress);
+            elderOrderData.put("estimatePrice", 0.0);
+            elderOrderData.put("createTime", LocalDateTime.now().toString());
+            elderOrderData.put("requesterName", guard.getGuardianName());
+            elderOrderData.put("destination", destAddress);
             
-            pushData.put("data", orderData);
+            elderPushData.put("data", elderOrderData);
             
-            // ⭐ 关键修复：确保使用订单中的 userId 推送，而不是请求参数
-            Long targetUserId = order.getUserId();
-            log.info("📤 准备推送代叫车通知：orderId={}, targetUserId={}, elderId_from_request={}", 
-                order.getId(), targetUserId, request.getElderId());
+            String elderMessageJson = com.alibaba.fastjson.JSON.toJSONString(elderPushData);
+            nativeWebSocket.sendMessageToUser(request.getElderId(), elderMessageJson);
+            log.info("✅ 已向长辈 userId={} 推送 ORDER_CREATED（需确认）", request.getElderId());
             
-            nativeWebSocket.sendMessageToUser(targetUserId, com.alibaba.fastjson.JSON.toJSONString(pushData));
-            log.info("✅ 亲友{}发起代叫车请求（需确认），订单ID: {}, 推送给长辈userId={}", guardianId, order.getId(), targetUserId);
+            // ⭐⭐⭐ 推送给亲友端：PROXY_ORDER_CREATED（只读状态卡片）
+            Map<String, Object> guardianPushData = new HashMap<>();
+            guardianPushData.put("type", "PROXY_ORDER_CREATED");
+            guardianPushData.put("userId", request.getElderId());  // ⭐ 关键字段：长辈ID（用于前端判断显示卡片）
+            guardianPushData.put("orderId", order.getId());
+            guardianPushData.put("proxyUserName", queryElderName(request.getElderId()));  // 长辈姓名
+            guardianPushData.put("poiName", destAddress);
+            guardianPushData.put("destAddress", destAddress);
+            guardianPushData.put("destLat", request.getDestLat());
+            guardianPushData.put("destLng", request.getDestLng());
+            guardianPushData.put("startLat", request.getStartLat());  // 长辈当前位置
+            guardianPushData.put("startLng", request.getStartLng());
+            guardianPushData.put("orderStatus", 0);  // 0-待长辈确认
+            
+            String guardianMessageJson = com.alibaba.fastjson.JSON.toJSONString(guardianPushData);
+            nativeWebSocket.sendMessageToUser(guardianId, guardianMessageJson);
+            log.info("✅ 已向亲友 userId={} 推送 PROXY_ORDER_CREATED（只读状态）", guardianId);
             
             // ⭐ 如果需要确认，不立即派单，等长辈确认后再派单
             if (!needConfirm) {
@@ -616,38 +632,55 @@ public class FamilyGuardServiceImpl implements FamilyGuardService {
             
             return Result.success(order);  // ⭐ 返回订单对象
         } else {
-            // ⭐ 直接下单 - 也使用 ORDER_CREATED 类型
-            pushData.put("type", "ORDER_CREATED");
-            pushData.put("success", true);
-            pushData.put("message", "您的亲友" + guard.getGuardianName() + "为您叫了一辆车");
+            // ⭐⭐⭐ 不需要确认的情况：同样推送双端消息
             
-            Map<String, Object> orderData = new HashMap<>();
-            orderData.put("orderId", order.getId());
-            orderData.put("orderNo", order.getOrderNo());
-            orderData.put("status", order.getStatus());
-            orderData.put("userId", request.getElderId());
-            orderData.put("elderUserId", request.getElderId());  // ⭐ 新增：长辈用户ID（前端期望字段）
-            orderData.put("guardianUserId", guardianId);
-            orderData.put("startLat", request.getStartLat());  // ⭐ 新增：起点纬度
-            orderData.put("startLng", request.getStartLng());  // ⭐ 新增：起点经度
-            orderData.put("destLat", request.getDestLat());
-            orderData.put("destLng", request.getDestLng());
-            orderData.put("poiName", destAddress);
-            orderData.put("destAddress", destAddress);
-            orderData.put("estimatePrice", 0.0);
-            orderData.put("createTime", LocalDateTime.now().toString());
-            orderData.put("requesterName", guard.getGuardianName());
-            orderData.put("destination", destAddress);
+            // 推送给长辈端：ORDER_CREATED
+            Map<String, Object> elderPushData = new HashMap<>();
+            elderPushData.put("type", "ORDER_CREATED");
+            elderPushData.put("success", true);
+            elderPushData.put("message", "您的亲友" + guard.getGuardianName() + "为您叫了一辆车");
             
-            pushData.put("data", orderData);
+            Map<String, Object> elderOrderData = new HashMap<>();
+            elderOrderData.put("orderId", order.getId());
+            elderOrderData.put("orderNo", order.getOrderNo());
+            elderOrderData.put("status", order.getStatus());
+            elderOrderData.put("userId", request.getElderId());
+            elderOrderData.put("elderUserId", request.getElderId());
+            elderOrderData.put("guardianUserId", guardianId);
+            elderOrderData.put("startLat", request.getStartLat());
+            elderOrderData.put("startLng", request.getStartLng());
+            elderOrderData.put("destLat", request.getDestLat());
+            elderOrderData.put("destLng", request.getDestLng());
+            elderOrderData.put("poiName", destAddress);
+            elderOrderData.put("destAddress", destAddress);
+            elderOrderData.put("estimatePrice", 0.0);
+            elderOrderData.put("createTime", LocalDateTime.now().toString());
+            elderOrderData.put("requesterName", guard.getGuardianName());
+            elderOrderData.put("destination", destAddress);
             
-            // ⭐ 关键修复：确保使用订单中的 userId 推送，而不是请求参数
-            Long targetUserId = order.getUserId();
-            log.info("📤 准备推送代叫车通知：orderId={}, targetUserId={}, elderId_from_request={}", 
-                order.getId(), targetUserId, request.getElderId());
+            elderPushData.put("data", elderOrderData);
             
-            nativeWebSocket.sendMessageToUser(targetUserId, com.alibaba.fastjson.JSON.toJSONString(pushData));
-            log.info("✅ 亲友{}代叫车成功（无需确认），订单ID: {}, 推送给长辈userId={}", guardianId, order.getId(), targetUserId);
+            String elderMessageJson = com.alibaba.fastjson.JSON.toJSONString(elderPushData);
+            nativeWebSocket.sendMessageToUser(request.getElderId(), elderMessageJson);
+            log.info("✅ 已向长辈 userId={} 推送 ORDER_CREATED（无需确认）", request.getElderId());
+            
+            // 推送给亲友端：PROXY_ORDER_CREATED
+            Map<String, Object> guardianPushData = new HashMap<>();
+            guardianPushData.put("type", "PROXY_ORDER_CREATED");
+            guardianPushData.put("userId", request.getElderId());
+            guardianPushData.put("orderId", order.getId());
+            guardianPushData.put("proxyUserName", queryElderName(request.getElderId()));
+            guardianPushData.put("poiName", destAddress);
+            guardianPushData.put("destAddress", destAddress);
+            guardianPushData.put("destLat", request.getDestLat());
+            guardianPushData.put("destLng", request.getDestLng());
+            guardianPushData.put("startLat", request.getStartLat());
+            guardianPushData.put("startLng", request.getStartLng());
+            guardianPushData.put("orderStatus", order.getStatus());
+            
+            String guardianMessageJson = com.alibaba.fastjson.JSON.toJSONString(guardianPushData);
+            nativeWebSocket.sendMessageToUser(guardianId, guardianMessageJson);
+            log.info("✅ 已向亲友 userId={} 推送 PROXY_ORDER_CREATED", guardianId);
             
             // ⭐ 直接下单 - 触发司机分配
             try {
@@ -662,6 +695,19 @@ public class FamilyGuardServiceImpl implements FamilyGuardService {
             }
             
             return Result.success(order);  // ⭐ 返回订单对象
+        }
+    }
+    
+    /**
+     * 查询长辈姓名（用于 PROXY_ORDER_CREATED 消息）
+     */
+    private String queryElderName(Long elderId) {
+        try {
+            com.anxin.travel.module.user.entity.User elder = userMapper.selectById(elderId);
+            return elder != null ? (elder.getNickname() != null ? elder.getNickname() : elder.getPhone()) : "长辈";
+        } catch (Exception e) {
+            log.warn("查询长辈姓名失败，elderId={}", elderId, e);
+            return "长辈";
         }
     }
 

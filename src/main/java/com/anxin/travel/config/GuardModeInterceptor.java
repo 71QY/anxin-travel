@@ -129,9 +129,26 @@ public class GuardModeInterceptor implements HandlerInterceptor {
 
         // 不在白名单,拒绝访问
         log.warn("⚠️ 长辈模式用户{}尝试访问受限路径:{}", userId, uri);
+        
+        // ⭐ 特殊处理：如果长辈尝试下单，返回友好提示
+        String message;
+        if (uri.contains("/api/order") && !uri.startsWith("/api/order/current") && 
+            !uri.startsWith("/api/order/detail") && !uri.startsWith("/api/order/list")) {
+            // 长辈尝试创建订单
+            message = "长辈模式无法直接下单，请联系亲友代叫车";
+            log.info("👴 长辈{}尝试下单，已拦截并提示联系亲友", userId);
+        } else if (uri.contains("/api/agent/confirm")) {
+            // 长辈通过智能体确认订单
+            message = "长辈模式无法通过智能体下单，请联系亲友代叫车";
+            log.info("👴 长辈{}尝试通过智能体下单，已拦截并提示联系亲友", userId);
+        } else {
+            // 其他受限功能
+            message = "长辈模式无法访问该功能";
+        }
+        
         response.setStatus(HttpServletResponse.SC_FORBIDDEN);
         response.setContentType("application/json;charset=UTF-8");
-        response.getWriter().write("{\"code\":403,\"message\":\"长辈模式无法访问该功能\"}");
+        response.getWriter().write("{\"code\":403,\"message\":\"" + message + "\"}");
         return false;
     }
 }

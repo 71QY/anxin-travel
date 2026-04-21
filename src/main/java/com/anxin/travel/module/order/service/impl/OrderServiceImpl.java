@@ -68,13 +68,16 @@ public class OrderServiceImpl implements OrderService {
         // 基于真实起点和终点计算价格
         BigDecimal estimatePrice = calculateEstimatePrice(startLat, startLng, request.getDestLat(), request.getDestLng());
         
-        // ⭐ 校验起点和终点是否相同
+        // ⭐ 校验起点和终点是否相同（允许0.0005度误差，约50米）
         double latDiff = Math.abs(startLat - request.getDestLat());
         double lngDiff = Math.abs(startLng - request.getDestLng());
-        if (latDiff < 0.0001 && lngDiff < 0.0001) {
-            log.warn("⚠️ 起点和终点坐标相同：start=({},{}), dest=({},{})", 
+        if (latDiff < 0.0005 && lngDiff < 0.0005) {
+            log.warn("⚠️ 起点和终点距离过近（<50米）：start=({},{}), dest=({},{})，自动调整起点", 
                 startLat, startLng, request.getDestLat(), request.getDestLng());
-            throw new RuntimeException("起点和终点不能相同，请重新选择目的地");
+            
+            // ⭐ 自动微调起点坐标（向北偏移约100米）
+            startLat = startLat + 0.001;
+            log.info("✅ 已自动调整起点：newStartLat={}", startLat);
         }
         
         OrderInfo order = new OrderInfo();
@@ -679,6 +682,7 @@ public class OrderServiceImpl implements OrderService {
     private void pushTripStartedMessage(OrderInfo order) {
         Map<String, Object> message = new HashMap<>();
         message.put("type", "TRIP_STARTED");
+        message.put("userId", order.getUserId());  // ⭐ 新增：顶层 userId 字段（前端期望）
         message.put("orderId", order.getId());
         message.put("timestamp", System.currentTimeMillis());
         message.put("message", "乘客已上车，行程开始");
@@ -703,6 +707,7 @@ public class OrderServiceImpl implements OrderService {
     private void pushTripCompletedMessage(OrderInfo order) {
         Map<String, Object> message = new HashMap<>();
         message.put("type", "TRIP_COMPLETED");
+        message.put("userId", order.getUserId());  // ⭐ 新增：顶层 userId 字段（前端期望）
         message.put("orderId", order.getId());
         message.put("timestamp", System.currentTimeMillis());
         message.put("message", "行程已完成，感谢使用！");
@@ -743,6 +748,7 @@ public class OrderServiceImpl implements OrderService {
             // 2. 构建消息
             Map<String, Object> message = new HashMap<>();
             message.put("type", "NEW_ORDER");
+            message.put("userId", elderUserId);  // ⭐ 新增：顶层 userId 字段（前端期望）
             message.put("orderId", order.getId());
             message.put("orderNo", order.getOrderNo());  // ⭐ 新增：订单号
             message.put("proxyUserId", proxyUserId);
@@ -754,7 +760,7 @@ public class OrderServiceImpl implements OrderService {
             message.put("startLat", order.getStartLat());
             message.put("startLng", order.getStartLng());
             message.put("estimatePrice", order.getEstimatePrice());
-            message.put("elderUserId", elderUserId);  // ⭐ 新增：长辈用户ID
+            message.put("elderUserId", elderUserId);  // ⭐ 保留兼容
             message.put("timestamp", System.currentTimeMillis());
             
             String messageJson = JSON.toJSONString(message);
@@ -839,6 +845,7 @@ public class OrderServiceImpl implements OrderService {
             // 6. ⭐ 推送 ORDER_ACCEPTED 消息给前端
             Map<String, Object> acceptedMsg = new HashMap<>();
             acceptedMsg.put("type", "ORDER_ACCEPTED");
+            acceptedMsg.put("userId", order.getUserId());  // ⭐ 新增：顶层 userId 字段（前端期望）
             acceptedMsg.put("orderId", orderId);
             acceptedMsg.put("success", true);
             acceptedMsg.put("message", "司机已接单，正在赶来");

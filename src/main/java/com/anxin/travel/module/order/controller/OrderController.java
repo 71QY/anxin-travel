@@ -95,7 +95,7 @@ public class OrderController {
         Long orderId = Long.valueOf(request.get("orderId").toString());
         Boolean accepted = (Boolean) request.get("accepted");
         
-        log.info("用户{}确认司机接单，orderId={}, accepted={}", userId, orderId, accepted);
+        log.info("🔍 【重要】用户{}手动调用确认接口，orderId={}, accepted={}, request={}", userId, orderId, accepted, request);
         driverAssignmentService.confirmDriverAcceptance(orderId, userId, accepted);
         return Result.success();
     }
@@ -126,12 +126,14 @@ public class OrderController {
     
     /**
      * 【测试接口】模拟司机接单
-     * 将订单状态改为5（行程中），并设置司机信息
+     * ⚠️ 已禁用：此接口会绕过用户确认直接接单，生产环境不应使用
      */
     @PostMapping("/test/mock-driver-accept/{orderId}")
     public Result<Void> mockDriverAccept(@PathVariable Long orderId) {
-        log.info("【测试】模拟司机接单，orderId={}", orderId);
-        orderService.mockDriverAccept(orderId);
-        return Result.success();
+        log.error("❌❌❌ 【禁止调用】测试接口被调用！orderId={}, userId={} - 此接口已禁用，请使用正常流程确认司机", 
+            orderId, UserContext.getUserId());
+        return Result.error("此接口已禁用，请通过正常流程确认司机");
+        // orderService.mockDriverAccept(orderId);
+        // return Result.success();
     }
 }

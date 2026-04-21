@@ -48,17 +48,21 @@ public class TripTrackingService {
     @Scheduled(fixedRate = 5000)
     public void pushDriverLocationDuringTrip() {
         try {
-            // 查询所有 status=5（行程中）的订单
+            // ⭐ 查询最近10分钟内创建的行程中订单
+            java.time.LocalDateTime tenMinutesAgo = java.time.LocalDateTime.now().minusMinutes(10);
+            
             List<OrderInfo> activeOrders = orderMapper.selectList(
                 new LambdaQueryWrapper<OrderInfo>()
                     .eq(OrderInfo::getStatus, 5)
+                    .ge(OrderInfo::getCreateTime, tenMinutesAgo)  // ⭐ 只查询最近10分钟的订单
+                    .orderByDesc(OrderInfo::getCreateTime)
             );
 
             if (activeOrders.isEmpty()) {
                 return;
             }
 
-            log.debug("📍 [定时任务] 检查 {} 个行程中订单", activeOrders.size());
+            log.debug("📍 [定时任务] 检查 {} 个行程中订单（最近10分钟）", activeOrders.size());
 
             for (OrderInfo order : activeOrders) {
                 try {
@@ -100,6 +104,7 @@ public class TripTrackingService {
         // 构建 WebSocket 消息（严格按照前端字段要求）
         Map<String, Object> message = new HashMap<>();
         message.put("type", "DRIVER_LOCATION");
+        message.put("userId", order.getUserId());  // ⭐ 新增：顶层 userId 字段（前端期望）
         message.put("orderId", order.getId());
         message.put("driverLat", order.getDriverLat());
         message.put("driverLng", order.getDriverLng());

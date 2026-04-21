@@ -218,6 +218,7 @@ public class UserFavoriteLocationServiceImpl implements UserFavoriteLocationServ
     private void pushFavoriteSharedMessage(UserFavoriteLocation favorite, Long elderUserId, Long guardianUserId) {
         Map<String, Object> message = new HashMap<>();
         message.put("type", "FAVORITE_SHARED");
+        message.put("userId", guardianUserId);  // ⭐ 新增：顶层 userId 字段（前端期望）
         message.put("favoriteId", favorite.getId());
         message.put("favoriteName", favorite.getName());
         message.put("favoriteAddress", favorite.getAddress());

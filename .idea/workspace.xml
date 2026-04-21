@@ -6,17 +6,16 @@
   <component name="ChangeListManager">
     <list default="true" id="7c5536af-c7f0-44f5-ac4b-bb8c2fe2da43" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/AGENT_API_DOCUMENT.md" beforeDir="false" afterPath="$PROJECT_DIR$/AGENT_API_DOCUMENT.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/NativeWebSocket.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/controller/NativeWebSocket.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/guard/controller/FamilyGuardController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/guard/controller/FamilyGuardController.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/guard/service/FamilyGuardService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/guard/service/FamilyGuardService.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/AgentService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/agent/service/AgentService.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/config/GuardModeInterceptor.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/config/GuardModeInterceptor.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/guard/service/impl/FamilyGuardServiceImpl.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/guard/service/impl/FamilyGuardServiceImpl.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/dto/CreateOrderRequest.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/dto/CreateOrderRequest.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/dto/OrderVO.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/dto/OrderVO.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/controller/OrderController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/controller/OrderController.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/TripTrackingService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/TripTrackingService.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/impl/DriverAssignmentServiceImpl.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/impl/DriverAssignmentServiceImpl.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/impl/OrderServiceImpl.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/order/service/impl/OrderServiceImpl.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/service/impl/UserFavoriteLocationServiceImpl.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/anxin/travel/module/user/service/impl/UserFavoriteLocationServiceImpl.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/resources/application.yml" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/resources/application.yml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
