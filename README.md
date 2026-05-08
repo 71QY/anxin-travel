@@ -279,7 +279,8 @@ mvn spring-boot:run
 
 如有问题或建议，欢迎提交 Issue 或通过以下方式联系：
 - GitHub Issues: https://github.com/HY-koi/anxin-travel/issues
-- Email: your_email@example.com
+- Email: haruhikage26@gmail.com
+- Email: q13686961704@qq.com
 
 ---
 
