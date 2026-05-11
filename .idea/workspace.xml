@@ -6,42 +6,6 @@
   <component name="ChangeListManager">
     <list default="true" id="7c5536af-c7f0-44f5-ac4b-bb8c2fe2da43" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/AGENT_API_DOCUMENT.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/AI_CONTEXT_FIX.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/BACKEND_DESIGN.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/COMPLETE_SOURCE_CODE_SUMMARY.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/DEFENSE_MATERIAL.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/FAMILY_GUARD_API_DOCUMENT.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/FAVORITES_API_DOCUMENT.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/FRONTEND_FIX_GUIDE.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/FRONTEND_INTEGRATION_GUIDE.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/IMAGE_API_DOCUMENT.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/IMAGE_RECOGNITION_API_COMPLETE.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/IMAGE_WEBSOCKET_API.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/PRIVATE_CHAT_API_DOCUMENT.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/TLSSocketFactory.java" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/VOICE_API_DOCUMENT.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/agent_confirm_api_notes.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/agent_confirm_test_cases.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/hs_err_pid13932.log" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/hs_err_pid18444.log" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/hs_err_pid26304.log" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/hs_err_pid32300.log" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/hs_err_pid34000.log" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/hs_err_pid34056.log" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/hs_err_pid34144.log" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/hs_err_pid34812.log" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/hs_err_pid4056.log" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/hs_err_pid43444.log" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/hs_err_pid46036.log" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/hs_err_pid47960.log" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/replay_pid34000.log" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/replay_pid4056.log" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/地图搜索功能-完整源代码备份.txt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/地图搜索功能完整代码.txt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/安装使用说明.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/智能体AI助手功能检查与修复报告.md" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -75,17 +39,17 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Maven.Travel Application.executor": "Run",
-    "RunOnceActivity.OpenProjectViewOnStart": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "git-widget-placeholder": "main",
-    "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "D:/homework/java/实验四/test1",
-    "settings.editor.selected.configurable": "reference.settings.project.maven.runner"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Maven.Travel Application.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;D:/homework/java/实验四/test1&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;reference.settings.project.maven.runner&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
       <recent name="D:\callcar_text\idea-project\travel" />
