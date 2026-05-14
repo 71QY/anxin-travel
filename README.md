@@ -277,6 +277,6 @@ License:
 联系方式:
 如有问题或建议，欢迎提交 Issue 或通过以下方式联系：
 - GitHub Issues:https://github.com/71QY/anxin-travel/issues
-- Email: q13686961704@qq.com
+- Email: 1396587508@qq.com
 
 Star this repo if you find it helpful! ⭐
