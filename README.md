@@ -17,45 +17,45 @@ JSON处理：Jackson 2.13、Fastjson 2.0
 核心功能
 
 AI智能体对话
-- 意图识别：基于通义千问大模型精准区分搜索/下单/聊天意图
-- 多轮对话：MemoryService维护会话上下文，支持连续交互
-- 方言支持：8种方言语音转文字识别与翻译
-- 工具调用：动态调度地图搜索、路线规划、天气查询等工具
+ 意图识别：基于通义千问大模型精准区分搜索/下单/聊天意图
+ 多轮对话：MemoryService维护会话上下文，支持连续交互
+ 方言支持：8种方言语音转文字识别与翻译
+ 工具调用：动态调度地图搜索、路线规划、天气查询等工具
 
 图像识别叫车
-- OCR地址提取：自动识别照片中的目的地地址信息
-- Base64图片上传：支持JPEG/PNG格式图片传输
-- 批量识别：支持多张图片连续识别与会话关联
-- 智能纠错：地址模糊时提供"您是否要找"推荐
+ OCR地址提取：自动识别照片中的目的地地址信息
+ Base64图片上传：支持JPEG/PNG格式图片传输
+ 批量识别：支持多张图片连续识别与会话关联
+ 智能纠错：地址模糊时提供"您是否要找"推荐
 
 多源地图搜索
-- 双数据源融合：腾讯地图（主）+ 高德地图（备）智能降级
-- POI智能排序：多维度评分算法（名称匹配50% + 距离30% + 地址相关性20%）
-- 零结果反馈：无匹配结果时提供纠偏建议
-- Redis缓存：POI搜索结果缓存10分钟，减少API调用60%
+ 双数据源融合：腾讯地图（主）+ 高德地图（备）智能降级
+ POI智能排序：多维度评分算法（名称匹配50% + 距离30% + 地址相关性20%）
+ 零结果反馈：无匹配结果时提供纠偏建议
+ Redis缓存：POI搜索结果缓存10分钟，减少API调用60%
 
 智能路径规划
-- 并行计算：多线程同时计算多个候选目的地路线
-- 实时预估：返回距离、时间、费用等多维度信息
-- 最优推荐：自动筛选最佳路线并排序
+ 并行计算：多线程同时计算多个候选目的地路线
+ 实时预估：返回距离、时间、费用等多维度信息
+ 最优推荐：自动筛选最佳路线并排序
 
 亲情守护模式
-- 长辈UI切换：适老化界面设计，大字体、大按钮
-- 代叫车功能：监护人可代替长辈创建订单并支付
-- 位置共享：实时追踪长辈行程，三方群聊（用户-司机-监护人）
-- 紧急联系人：一键呼叫预设紧急联系人
+ 长辈UI切换：适老化界面设计，大字体、大按钮
+ 代叫车功能：监护人可代替长辈创建订单并支付
+ 位置共享：实时追踪长辈行程，三方群聊（用户-司机-监护人）
+ 紧急联系人：一键呼叫预设紧急联系人
 
 订单管理
-- 实时状态推送：WebSocket推送订单状态变更（待接单/已接单/行程中/已完成）
-- 司机信息展示：显示司机姓名、车牌、评分、联系电话
-- 历史订单查询：支持分页查询与条件筛选
-- 订单取消：支持用户主动取消待接单订单
+ 实时状态推送：WebSocket推送订单状态变更（待接单/已接单/行程中/已完成）
+ 司机信息展示：显示司机姓名、车牌、评分、联系电话
+ 历史订单查询：支持分页查询与条件筛选
+ 订单取消：支持用户主动取消待接单订单
 
 用户系统
-- JWT认证：无状态会话管理，支持HTTP和WebSocket鉴权
-- 密码加密：BCrypt哈希加密，防止明文存储
-- 头像上传：支持用户自定义头像
-- 收藏地点：常用地址收藏与管理
+ JWT认证：无状态会话管理，支持HTTP和WebSocket鉴权
+ 密码加密：BCrypt哈希加密，防止明文存储
+ 头像上传：支持用户自定义头像
+ 收藏地点：常用地址收藏与管理
 
 项目结构
 
@@ -110,7 +110,6 @@ src/main/java/com/anxin/travel/
         ├── JwtUtil.java
         ├── RedisUtil.java
         └── UserContext.java
-```
 
 快速启动
 
@@ -123,17 +122,15 @@ src/main/java/com/anxin/travel/
 安装步骤
 
 1. 数据库初始化
-```bash
+bash
 mysql -u root -p
 CREATE DATABASE anxin_travel CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE anxin_travel;
 SOURCE database/anxin_travel.sql;
-```
 
 2. 配置环境变量
    复制 `.env.example` 为 `.env` 或 `application-local.yml`，填写以下配置：
-
-```yaml
+yaml
 spring:
   datasource:
     username: your_db_username
@@ -173,35 +170,35 @@ WebSocket：ws://localhost:8080/ws/agent?token={jwt_token}
 API接口文档
 
 认证接口：
-`POST /api/auth/register` - 用户注册
-`POST /api/auth/login` - 用户登录
-`GET /api/auth/info` - 获取用户信息
+POST /api/auth/register` - 用户注册
+POST /api/auth/login` - 用户登录
+GET /api/auth/info` - 获取用户信息
 
 AI智能体接口
- `POST /api/agent/image` - 图片识别叫车
-  - Headers: `X-User-Id: {user_id}`
-  - Body: `{ sessionId, imageBase64, lat, lng }`
-
- `POST /api/agent/confirm` - 确认目的地
-  - Body: `{ sessionId, selectedPoiName, lat, lng }`
+POST /api/agent/image` - 图片识别叫车
+   Headers: `X-User-Id: {user_id}`
+   Body: `{ sessionId, imageBase64, lat, lng }`
+   
+ POST /api/agent/confirm` - 确认目的地
+   Body: `{ sessionId, selectedPoiName, lat, lng }`
 
 订单接口
- `POST /api/order/create` - 创建订单
- `GET /api/order/list` - 查询订单列表
- `GET /api/order/{id}` - 查询订单详情
- `POST /api/order/cancel` - 取消订单
+ POST /api/order/create` - 创建订单
+ GET /api/order/list` - 查询订单列表
+ GET /api/order/{id}` - 查询订单详情
+ POST /api/order/cancel` - 取消订单
 
 亲情守护接口
- `POST /api/guard/add` - 添加监护人
- `GET /api/guard/list` - 查询监护人列表
- `POST /api/guard/share-location` - 分享位置给长辈
+ POST /api/guard/add` - 添加监护人
+ GET /api/guard/list` - 查询监护人列表
+ POST /api/guard/share-location` - 分享位置给长辈
 
 WebSocket消息类型
- `text` - 文本消息（自然语言对话）
- `image` - 图片消息（Base64编码）
- `confirm` - 确认消息（选择目的地）
- `NEW_ORDER` - 新订单通知
- `ORDER_STATUS_UPDATE` - 订单状态更新
+ text` - 文本消息（自然语言对话）
+ image` - 图片消息（Base64编码）
+ confirm` - 确认消息（选择目的地）
+ NEW_ORDER` - 新订单通知
+ ORDER_STATUS_UPDATE` - 订单状态更新
 
 技术亮点
 
@@ -274,7 +271,7 @@ License:
 
 联系方式:
 如有问题或建议，欢迎提交 Issue 或通过以下方式联系：
-- GitHub Issues:https://github.com/71QY/anxin-travel/issues
-- Email: 1396587508@qq.com
+ GitHub Issues:https://github.com/71QY/anxin-travel/issues
+ Email: 1396587508@qq.com
 
 Star this repo if you find it helpful! ⭐
