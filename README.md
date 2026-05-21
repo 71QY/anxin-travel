@@ -111,8 +111,6 @@ src/main/java/com/anxin/travel/
         ├── RedisUtil.java
         └── UserContext.java
 
-快速启动
-
 环境要求
 - JDK 17+
 - Maven 3.9+
