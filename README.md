@@ -59,7 +59,6 @@ AI智能体对话
 
 项目结构
 
-```
 src/main/java/com/anxin/travel/
 ├── agent/                    # AI智能体模块（核心业务）
 │   ├── ai/                   # AI客户端层
