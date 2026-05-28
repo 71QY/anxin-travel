@@ -3,7 +3,6 @@ Anxin Travel - AI智能出行助手
 基于 Java 17 + Spring Boot 3.1.5 构建的AI驱动智能出行平台，通过自然语言交互和图像识别技术实现便捷叫车服务。项目集成阿里云通义千问大模型、双地图数据源（腾讯+高德）、Redis缓存及WebSocket实时通信，功能完整、架构规范
 
 技术栈
-
 核心框架：Java 17、Spring Boot 3.1.5
 持久层：MyBatis-Plus 3.5.3
 数据库：MySQL 8.0、Redis 7.x
